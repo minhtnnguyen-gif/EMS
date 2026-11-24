@@ -121,7 +121,7 @@ function prV(){const L=[...S.prices].sort((a,b)=>a.brand.localeCompare(b.brand)|
  L.forEach(p=>{const k=p.brand+p.type;if(!seen.has(k)&&p.date<=today()){seen.add(k);cur.add(p.id)}});
  return `<div class="card"><h2>Thread prices</h2><div class="row"><select id="pb">${opts(BR)}</select><select id="pt">${opts(CATS)}</select><input id="pp" type="number" min="0" placeholder="Price per skein (₫)"><input id="pd" type="date" value="${today()}"><button class="p" data-a="addprice">Add price</button></div><p class="m">New prices are added to the history. Costs use the latest price effective today or earlier.</p><div class="tw"><table><tr><th>Brand</th><th>Type</th><th class="n">Price</th><th>Effective</th><th></th></tr>${L.map(p=>`<tr><td>${esc(p.brand)}</td><td>${esc(p.type)}</td><td class="n">${vnd(p.price)}</td><td>${p.date}</td><td>${cur.has(p.id)?'<span class="tag">Current</span>':''}</td></tr>`).join('')}</table></div></div>
  <div class="card"><h3>Default hourly labor rate</h3><input type="number" min="0" data-c="rate" value="${S.rate||''}" placeholder="₫ per hour"></div>`}
-const dtV=()=>`<div class="card"><h2>Backup and export</h2><p class="m">Data is stored in this browser only. Export a backup regularly. The JSON backup holds patterns, colors, mappings and prices; attachment files stay in this browser’s storage.</p><div class="row"><button class="p" data-a="bk">Download JSON backup</button><label>Restore from backup<input type="file" accept=".json" data-c="rest"></label></div><div class="row"><button data-a="expall">Export patterns and recipes CSV</button><button data-a="expcost">Export cost summary CSV</button><button data-a="expcolors">Export color catalog CSV</button><button data-a="expmaps">Export mappings CSV</button></div><div class="row"><button class="x" data-a="wipe">Delete all data in this browser</button></div></div>`;
+const dtV=()=>`<div class="card"><h2>Backup and export</h2><p class="m">Data is stored in this browser only. Export a backup regularly. The JSON backup holds patterns, recipes, colors, mappings, prices and attachment files, so you can move everything to another browser or device with Restore from backup.</p><div class="row"><button class="p" data-a="bk">Download JSON backup</button><label>Restore from backup<input type="file" accept=".json" data-c="rest"></label></div><div class="row"><button data-a="expall">Export patterns and recipes CSV</button><button data-a="expcost">Export cost summary CSV</button><button data-a="expcolors">Export color catalog CSV</button><button data-a="expmaps">Export mappings CSV</button></div><div class="row"><button class="x" data-a="wipe">Delete all data in this browser</button></div></div>`;
 /* small JPEG thumbnails are kept as data URLs so photos show even where blob URLs are blocked */
 const findAtt=id=>{for(const p of S.patterns){const a=p.atts.find(x=>x.id==id);if(a)return a}};
 const thumb=b=>new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;fr.onload=()=>{const im=new Image();im.onerror=rej;im.onload=()=>{const k=Math.min(1,240/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.width*k));c.height=Math.max(1,Math.round(im.height*k));const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.75))};im.src=fr.result};fr.readAsDataURL(b)});
@@ -179,7 +179,9 @@ const act={
   S.maps.push({id:uid(),sb:a.brand,sc:a.cat,scode:a.code,tb:b.brand,tc:b.cat,tcode:b.code,type:v(7),rank:v(8),notes:v(9),src:'Manual'});save();r()},
  addprice:()=>{const p=+$('#pp').value;if(!(p>0))return say('Enter a price above 0.');S.prices.push({id:uid(),brand:$('#pb').value,type:$('#pt').value,price:p,date:$('#pd').value||today(),upd:today()});save();r()},
  wipe:async()=>{if(!await ask('Delete ALL patterns, colors, mappings, prices and attachments in this browser? This cannot be undone.'))return;(await idb).close();localStorage.removeItem(K);indexedDB.deleteDatabase('ems-files').onsuccess=()=>location.reload()},
- bk:()=>dl('ems-backup-'+today()+'.json',JSON.stringify(S),'application/json')
+ bk:async()=>{const b2d=b=>new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;fr.onload=()=>res(fr.result);fr.readAsDataURL(b)}),_files={};
+  for(const p of S.patterns)for(const a of p.atts){const b=await fget(a.id).catch(()=>null);if(b)_files[a.id]={type:b.type||a.type,data:await b2d(b)}}
+  dl('ems-backup-'+today()+'.json',JSON.stringify({...S,_files}),'application/json')}
 };
 const ch={
  ps:e=>{F.ps=e.value;r()},cf:e=>{F[e.dataset.k]=e.value;r()},rate:e=>{S.rate=+e.value||0;save()},
@@ -201,7 +203,9 @@ const ch={
  imp:async e=>{const f=e.files[0];if(!f)return;pend={k:e.dataset.k,...check(e.dataset.k,recs(await f.text()))};r()},
  cv:e=>{CV[e.dataset.k]=e.value;if(e.dataset.k=='sb')CV.tb=CV.tb.filter(b=>b!=e.value);CV.go=0;r()},
  cvt:e=>{CV.tb=e.checked?[...CV.tb,e.value]:CV.tb.filter(b=>b!=e.value);CV.go=0},
- rest:async e=>{try{const d=JSON.parse(await e.files[0].text());if(!Array.isArray(d.patterns))throw 0;if(await ask('Replace all current data with this backup?')){S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d);save();sel=null;r()}}catch(x){say('That file is not a valid EMS backup.')}}
+ rest:async e=>{try{const d=JSON.parse(await e.files[0].text());if(!Array.isArray(d.patterns))throw 0;if(await ask('Replace all current data with this backup?')){const fl=d._files||{};delete d._files;
+   for(const id in fl){const o=fl[id],u=atob(o.data.split(',')[1]),n=new Uint8Array(u.length);for(let i=0;i<u.length;i++)n[i]=u.charCodeAt(i);await fput(id,new Blob([n],{type:o.type}))}
+   S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d);save();sel=null;r()}}catch(x){say('That file is not a valid EMS backup.')}}
 };
 document.addEventListener('click',e=>{const a=e.target.closest('[data-a]');if(a&&act[a.dataset.a])act[a.dataset.a](a.dataset,a)});
 document.addEventListener('change',e=>{const c=e.target.dataset&&e.target.dataset.c;if(c&&ch[c])ch[c](e.target)});
