@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Embroidery Management System</title>
+<style>
+:root{--ink:#1f2a37;--mut:#5d6b7a;--bg:#f4f6f7;--card:#fff;--line:#d9e0e4;--ac:#1f5f5b;--tint:#e1efed;--bad:#b3261e}
+*{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+header{background:var(--ac);color:#fff;padding:10px 16px;position:sticky;top:0;z-index:5}
+header b{font-size:17px}nav{display:flex;gap:4px;overflow-x:auto;margin-top:6px}
+nav button{background:none;border:0;color:#cfe5e2;padding:6px 12px;border-radius:6px;white-space:nowrap}
+nav button.on{background:#fff;color:var(--ac);font-weight:600}
+main{max-width:1000px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:14px}
+h2{margin:0 0 10px;font-size:18px}h3{margin:0 0 8px;font-size:15px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+label{display:flex;flex-direction:column;font-size:13px;color:var(--mut)}
+input,select,textarea,button{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:#fff;color:inherit;min-width:0}
+button{cursor:pointer}button.p{background:var(--ac);color:#fff;border-color:var(--ac)}button.x{color:var(--bad)}button:disabled{opacity:.5}
+nav button{border:0}:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+input:focus::placeholder,textarea:focus::placeholder{color:transparent}
+.tn{width:56px;height:56px;object-fit:cover;border-radius:4px;background:var(--tint);display:grid;place-items:center;font-size:12px}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}th{font-size:13px;color:var(--mut);font-weight:600}
+.sw{display:inline-block;width:18px;height:18px;border-radius:50%;border:1px solid #0003;vertical-align:middle;margin-right:4px}
+.m{color:var(--mut);font-size:13px}.bad{color:var(--bad)}.n{text-align:right;font-variant-numeric:tabular-nums}
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.pc{cursor:pointer}tr.pc:hover{background:var(--tint)}.pc img,.th{width:100%;height:130px;object-fit:cover;background:var(--tint);border-radius:6px;display:block;margin-bottom:6px}
+.best{background:var(--tint);font-weight:600}.tag{background:var(--tint);padding:1px 7px;border-radius:9px;font-size:12px}
+.note{background:#fff7dd;border:1px solid #ecd78a;border-radius:6px;padding:8px;margin-bottom:8px}
+@media print{header,button,.noprint,input[type=file]{display:none!important}body{background:#fff}.card{border:0}}
+</style></head><body>
+<header><b>Embroidery Management System</b><nav id="nav"></nav></header>
+<main id="app"></main>
+<script>
+const BR=['DMC','Cosmo','Olympus','Anchor','Madeira','Au Ver à Soie','Gütermann','Au Chinois','Airo'];
+const CATS=['Stranded Cotton','Perle Cotton','Silk Thread','Metallic Thread','Variation Thread','Wool Thread','Satin Floss'];
+const AC=['Original pattern','Line art','Embroidered result','Detail photo','Other'];
+const T=[['patterns','Patterns'],['colors','Colors'],['convert','Convert'],['prices','Prices & labor'],['data','Backup']];
+const K='ems-v2',$=s=>document.querySelector(s),uid=()=>Math.random().toString(36).slice(2,9),today=()=>new Date().toISOString().slice(0,10);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const vnd=n=>new Intl.NumberFormat('vi-VN').format(Math.round(n||0))+' ₫';
+/* in-page dialogs: native alert/confirm/prompt are silently blocked in sandboxed previews */
+function dlg(msg,kind,val){return new Promise(res=>{const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center;z-index:99;padding:16px';
+ d.innerHTML=`<div class="card" role="dialog" aria-modal="true" style="max-width:420px;width:100%;margin:0"><p style="margin-top:0">${esc(msg)}</p>${kind=='text'?'<input id="dlgi" style="width:100%;margin-bottom:10px">':''}<div class="row" style="justify-content:flex-end;margin:0">${kind=='say'?'':'<button id="dlgc">Cancel</button>'}<button class="p" id="dlgo">OK</button></div></div>`;
+ document.body.appendChild(d);const i=d.querySelector('#dlgi');if(i)i.value=val||'';const done=v=>{d.remove();res(v)};
+ d.querySelector('#dlgo').onclick=()=>done(kind=='text'?i.value:true);const c=d.querySelector('#dlgc');if(c)c.onclick=()=>done(kind=='text'?null:false);(i||d.querySelector('#dlgo')).focus()})}
+const ask=m=>dlg(m,'ask'),say=m=>dlg(m,'say'),askText=(m,v)=>dlg(m,'text',v);
+const opts=(a,v)=>a.map(x=>`<option${x==v?' selected':''}>${esc(x)}</option>`).join('');
+if(!localStorage['ems-wiped']){try{localStorage.removeItem('ems-v1');indexedDB.deleteDatabase('ems-files');localStorage['ems-wiped']='1'}catch(e){}}
+let S={};try{S=JSON.parse(localStorage[K])}catch(e){}
+S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},S);
+const save=()=>{try{localStorage[K]=JSON.stringify(S)}catch(e){say('Browser storage is full. Export a backup, then remove unused data.')}};
+let tab='patterns',sel=null,pend=null,stage=null,F={},CV={sb:'DMC',cat:CATS[0],code:'',tb:[],go:0};
+/* attachment files live in IndexedDB so originals are preserved */
+const idb=new Promise((r,j)=>{const q=indexedDB.open('ems-files',1);q.onupgradeneeded=()=>q.result.createObjectStore('f');q.onsuccess=()=>r(q.result);q.onerror=()=>j(q.error)});idb.catch(()=>{});
+const fput=async(id,b)=>{const d=await idb;return new Promise((r,j)=>{const t=d.transaction('f','readwrite');t.objectStore('f').put(b,id);t.oncomplete=r;t.onerror=t.onabort=()=>j(t.error)})};
+const fget=async id=>{const d=await idb;return new Promise(r=>{const q=d.transaction('f').objectStore('f').get(id);q.onsuccess=()=>r(q.result)})};
+const fdel=async id=>{const d=await idb;d.transaction('f','readwrite').objectStore('f').delete(id)};
+/* data helpers */
+const P=()=>S.patterns.find(p=>p.id==sel),R=(p,id)=>p.recipes.find(r=>r.id==id);
+const ck=c=>[c.brand,c.cat,c.coll||'',c.code].join('|').toLowerCase();
+const fc=(b,cat,code)=>S.colors.find(c=>c.brand==b&&c.cat==cat&&c.code.toLowerCase()==String(code).trim().toLowerCase());
+const price=(b,cat)=>{const x=S.prices.filter(p=>p.brand==b&&p.type==cat&&p.date<=today()).sort((a,c)=>c.date.localeCompare(a.date))[0];return x?x.price:0};
+const lc=l=>Math.round((+l.qty||0)*100)/100*price(l.brand,l.cat);
+const rcost=r=>r.lines.reduce((s,l)=>s+lc(l),0);
+const rn=r=>r.name||[...new Set(r.lines.map(l=>l.brand))].join(' + ')||'New recipe';
+const lab=p=>{const L=p.labor||{},h=L.hrs!==undefined&&L.hrs!==''?+L.hrs:(+L.act||+L.est||0);return L.ov>0?L.ov:h*(L.rate>0?L.rate:S.rate||0)};
+/* conversion: database mappings only, never colour-distance maths */
+function conv(sb,cat,code,tb){
+ if([sb,tb].sort().join()=='Airo,DMC')return fc(tb,cat,code)?[{sb,sc:cat,scode:code,tb,tc:cat,tcode:code,type:'Exact',rank:1,src:'Airo uses DMC codes (1-1)',notes:'',syn:1}]:[];
+ return S.maps.filter(m=>m.sb==sb&&m.sc==cat&&m.scode.toLowerCase()==String(code).trim().toLowerCase()&&m.tb==tb).sort((a,b)=>(+a.rank||999)-(+b.rank||999))}
+/* csv */
+function csv(t){const R=[];let r=[],c='',q=0;for(let i=0;i<t.length;i++){const h=t[i];if(q){if(h=='"'){if(t[i+1]=='"'){c+='"';i++}else q=0}else c+=h}else if(h=='"')q=1;else if(h==','){r.push(c);c=''}else if(h=='\n'||h=='\r'){if(h=='\r'&&t[i+1]=='\n')i++;r.push(c);c='';if(r.some(x=>x.trim()))R.push(r);r=[]}else c+=h}r.push(c);if(r.some(x=>x.trim()))R.push(r);return R}
+function recs(t){const [h,...rows]=csv(t.replace(/^\ufeff/,''));const k=h.map(x=>x.trim().toLowerCase().replace(/[^a-z]+/g,'_'));return rows.map(r=>Object.fromEntries(k.map((x,i)=>[x,(r[i]||'').trim()])))}
+const toCSV=rows=>rows.map(r=>r.map(v=>{v=String(v==null?'':v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(',')).join('\n');
+function dl(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([type?text:'\ufeff'+text],{type:type||'text/csv'}));a.download=name;a.click()}
+const HC='brand,category,code,name,hex,collection,status,source',HM='source_brand,source_category,source_code,target_brand,target_category,target_code,match_type,ranking,notes,source';
+function check(kind,rows){const ok=[],err=[],seen=new Set();
+ rows.forEach((r,i)=>{const n=i+2,E=m=>err.push([n,m]);
+  if(kind=='colors'){const b=r.brand,cat=r.category||CATS[0];
+   if(!BR.includes(b))return E('Unknown brand "'+b+'"');if(!CATS.includes(cat))return E('Unknown category "'+cat+'"');if(!r.code)return E('Missing color code');
+   const o={id:uid(),brand:b,cat,code:r.code,name:r.name||'',hex:/^#?[0-9a-f]{6}$/i.test(r.hex||'')?'#'+r.hex.replace('#',''):'',coll:r.collection||'',status:/disc/i.test(r.status||'')?'Discontinued':'Active',src:r.source||'',upd:today()};
+   const k=ck(o);if(seen.has(k)||S.colors.some(c=>ck(c)==k))return E('Duplicate '+b+' '+r.code);seen.add(k);ok.push(o)}
+  else{const sb=r.source_brand,tb=r.target_brand,sc=r.source_category||CATS[0],tc=r.target_category||CATS[0];
+   if(!BR.includes(sb)||!BR.includes(tb))return E('Unknown source or target brand');
+   const a=fc(sb,sc,r.source_code),b=fc(tb,tc,r.target_code);
+   if(!a)return E('Source color '+sb+' '+r.source_code+' is not in the catalog');if(!b)return E('Target color '+tb+' '+r.target_code+' is not in the catalog');
+   const o={id:uid(),sb,sc,scode:a.code,tb,tc,tcode:b.code,type:r.match_type||'',rank:r.ranking||'',notes:r.notes||'',src:r.source||''};
+   const k=[sb,sc,o.scode,tb,tc,o.tcode].join('|').toLowerCase();if(seen.has(k)||S.maps.some(m=>[m.sb,m.sc,m.scode,m.tb,m.tc,m.tcode].join('|').toLowerCase()==k))return E('Duplicate mapping '+sb+' '+o.scode+' → '+tb+' '+o.tcode);seen.add(k);ok.push(o)}});
+ return{ok,err}}
+/* views */
+const swatch=c=>c&&c.hex?`<span class="sw" style="background:${esc(c.hex)}"></span>`:'';
+const prim=p=>{const im=p.atts.filter(a=>/^image/.test(a.type)),pick=c=>{const x=im.filter(a=>a.cat==c);return x.find(a=>a.primary)||x[0]},a=pick('Embroidered result')||pick('Line art')||im.find(a=>a.primary)||im[0];return a?`<img data-f="${a.id}" alt="">`:'<div class="th"></div>'};
+function listV(){const q=(F.pq||'').toLowerCase();
+ const L=S.patterns.filter(p=>(p.name+p.id).toLowerCase().includes(q)),v=F.pv||'thumbs',vb=(k,t)=>`<button data-a="pview" data-k="${k}" class="${v==k?'p':''}" aria-pressed="${v==k}">${t}</button>`;
+ return `<div class="row"><input id="pq" data-live="pq" placeholder="Search patterns" value="${esc(F.pq||'')}" style="flex:1"><span class="row" style="margin:0;gap:0">${vb('thumbs','Thumbnails')}${vb('list','List')}</span><button class="p" data-a="newp">New pattern</button></div>`+
+ (L.length&&v=='list'?`<div class="card tw"><table><tr><th>Pattern ID</th><th>Pattern name</th><th>Date created</th><th class="n">Width (cm)</th><th class="n">Height (cm)</th></tr>${L.map(p=>`<tr class="pc" data-a="openp" data-id="${p.id}"><td>${p.id}</td><td><b>${esc(p.name||'Untitled pattern')}</b></td><td>${p.created}</td><td class="n">${p.w===''||p.w==null?'–':esc(p.w)}</td><td class="n">${p.h===''||p.h==null?'–':esc(p.h)}</td></tr>`).join('')}</table></div>`:L.length?`<div class="g">${L.map(p=>`<div class="card pc" data-a="openp" data-id="${p.id}">${prim(p)}<b>${esc(p.name||'Untitled pattern')}</b><div class="m">${p.id}</div></div>`).join('')}</div>`:'<p class="m">No patterns here yet. Select “New pattern” to add one.</p>')}
+function recH(p,r){const rows=r.lines.map((l,i)=>{const d=`data-c="ln" data-r="${r.id}" data-i="${i}"`,pr=price(l.brand,l.cat),f=fc(l.brand,l.cat,l.code),id='dl'+r.id+i;
+ return `<tr><td><select ${d} data-k="brand">${opts(BR,l.brand)}</select></td><td><select ${d} data-k="cat">${opts(CATS,l.cat)}</select></td><td>${swatch(f)}<input ${d} data-k="code" list="${id}" value="${esc(l.code)}" size="8" placeholder="Code"><datalist id="${id}">${S.colors.filter(c=>c.brand==l.brand&&c.cat==l.cat&&c.status=='Active').map(c=>`<option value="${esc(c.code)}">${esc(c.name)}</option>`).join('')}</datalist></td><td><input type="number" step="0.01" min="0" ${d} data-k="qty" value="${l.qty}" style="width:80px"></td><td class="n">${pr?vnd(pr):'<span class="bad">No price</span>'}</td><td class="n">${vnd(lc(l))}</td><td><button class="x" data-a="delln" data-r="${r.id}" data-i="${i}" aria-label="Remove color">✕</button></td></tr>${l.hint?`<tr><td colspan="7" class="m">${esc(l.hint)}</td></tr>`:''}`}).join('');
+ return `<div class="card">${r.draft?`<div class="note">Draft from conversion. Review each color, then confirm. <button class="p" data-a="confirm" data-r="${r.id}">Confirm recipe</button></div>`:''}<div class="row"><input data-c="rname" data-r="${r.id}" value="${esc(r.name)}" placeholder="${esc(rn({lines:r.lines}))}" style="flex:1"><select data-c="conv" data-r="${r.id}" class="noprint"><option value="">Convert to…</option>${BR.map(b=>`<option>${esc(b)}</option>`).join('')}</select><button data-a="addln" data-r="${r.id}">Add color</button><button class="x" data-a="delrec" data-r="${r.id}">Delete</button></div><div class="tw"><table><tr><th>Brand</th><th>Category</th><th>Code</th><th>Skeins</th><th class="n">Price/skein</th><th class="n">Cost</th><th></th></tr>${rows}</table></div><div class="n"><b>Thread cost: ${vnd(rcost(r))}</b></div></div>`}
+function stgV(){if(!stage)return '';const e=!!stage.id;
+ return `<div class="note noprint"><h3>${e?'Edit attachment':'New attachment'}</h3>${e?`<div class="row"><label style="flex:1">File name<input data-c="stg" data-k="name" value="${esc(stage.name)}"></label></div>`:''}<div class="row"><label>Category<select data-c="stg" data-k="cat">${opts(AC,stage.cat)}</select></label><label style="flex:1">Description (optional)<input data-c="stg" data-k="desc" value="${esc(stage.desc)}"></label></div><div class="row">${stage.file?`<b>${esc(stage.file.name)}</b><button class="x" data-a="stgclear">Remove file</button>`:`<label>${e?'Replace file (optional)':'File'}: PNG, JPG, BMP or PDF<input type="file" accept=".png,.jpg,.jpeg,.bmp,.pdf" data-c="stgf"></label>`}</div><label style="flex-direction:row;gap:6px;align-items:center;margin-bottom:8px"><input type="checkbox" data-c="stgp"${stage.primary?' checked':''}>Primary reference image</label><div class="row"><button class="p" data-a="stgsave"${e||stage.file?'':' disabled'}>${e?'Save changes':'Add attachment'}</button><button data-a="stgx">Cancel</button></div></div>`}
+function patV(){const p=P(),L=p.labor||{},f=(k,ph,t,x)=>`<label style="${x||''}">${ph}<input ${t||''} data-c="pf" data-k="${k}" value="${esc(p[k])}"></label>`;
+ const rs=p.recipes,lb=lab(p),best=Math.min(...rs.map(r=>rcost(r)+lb));
+ return `<div class="row noprint"><button data-a="back">← All patterns</button><button data-a="print">Print / save as PDF</button><button data-a="copyp">Copy pattern</button><button data-a="expcost">Export cost summary</button><button class="x" data-a="delp">Delete pattern</button></div>
+ <div class="card"><h2>${p.id}</h2><div class="row">${f('name','Pattern name','','flex:2;min-width:200px')}</div><div class="row">${f('w','Width (cm)','type="number" min="0" step="0.1"')}${f('h','Height (cm)','type="number" min="0" step="0.1"')}</div><label>Description<textarea data-c="pf" data-k="desc" rows="2" style="width:100%">${esc(p.desc)}</textarea></label><div class="m">Created ${p.created} · Updated ${p.updated}</div></div>
+ <div class="card"><div class="row"><h3 style="margin:0;flex:1">Attachments (${p.atts.length})</h3>${stage?'':'<button class="p noprint" data-a="stgopen">Add attachment</button>'}</div>${stgV()}${p.atts.length?`<div class="tw"><table><tr><th></th><th>File</th><th>Category</th><th>Description</th><th>Added</th><th class="noprint"></th></tr>${p.atts.map(a=>`<tr><td>${/^image/.test(a.type)?`<img class="tn" data-f="${a.id}" alt="">`:'<div class="tn">PDF</div>'}</td><td><b>${esc(a.name)}</b> ${a.primary?'<span class="tag">Primary</span>':''}</td><td>${esc(a.cat)}</td><td>${esc(a.desc)}</td><td>${a.date}</td><td class="noprint"><button data-a="stged" data-id="${a.id}">Edit</button> <a data-f="${a.id}" target="_blank" rel="noopener">Preview</a> <a data-f="${a.id}" download="${esc(a.name)}">Download</a> <button class="x" data-a="delatt" data-id="${a.id}">Delete</button></td></tr>`).join('')}</table></div>`:'<p class="m">No attachments yet. Select “Add attachment” to upload the first one.</p>'}</div>
+ <div class="card"><h3>Labor (shared by all recipes)</h3><div class="row">${[['hrs','Labor hours'],['rate','Hourly rate (₫)'],['ov','Direct cost override (₫)']].map(([k,t])=>`<label>${t}<input type="number" min="0" step="any" data-c="lab" data-k="${k}" value="${L[k]===undefined?'':L[k]}"></label>`).join('')}</div><div>Labor cost: <b>${vnd(lb)}</b> <span class="m">(hours × hourly rate; a blank rate uses the default rate, and a direct cost override replaces the calculation)</span></div></div>
+ <div class="row"><h2 style="margin:0;flex:1">Thread recipes</h2><button class="p noprint" data-a="addrec">New recipe</button></div>${rs.map(r=>recH(p,r)).join('')||'<p class="m">No recipes yet. Add one to calculate thread cost.</p>'}
+ ${rs.length?`<div class="card"><h3>Cost comparison</h3><div class="tw"><table><tr><th>Recipe</th><th class="n">Thread</th><th class="n">Labor</th><th class="n">Total</th></tr>${rs.map(r=>{const t=rcost(r)+lb;return `<tr class="${t==best?'best':''}"><td>${esc(rn(r))}${r.draft?' (draft)':''}</td><td class="n">${vnd(rcost(r))}</td><td class="n">${vnd(lb)}</td><td class="n">${vnd(t)}</td></tr>`}).join('')}</table></div></div>`:''}`}
+const impV=k=>`<div class="card"><h3>Import ${k=='colors'?'color catalog':'conversion mappings'} (CSV)</h3><div class="row"><input type="file" accept=".csv,text/csv" data-c="imp" data-k="${k}"><button data-a="tpl" data-k="${k}">Download template</button></div>${pend&&pend.k==k?`<p><b>${pend.ok.length}</b> valid rows, <b class="${pend.err.length?'bad':''}">${pend.err.length}</b> with errors. Nothing is saved until you confirm.</p>${pend.err.slice(0,8).map(e=>`<div class="m bad">Row ${e[0]}: ${esc(e[1])}</div>`).join('')}<div class="row">${pend.err.length?'<button data-a="errrep">Download error report</button>':''}<button class="p" data-a="commit"${pend.ok.length?'':' disabled'}>Import ${pend.ok.length} valid rows</button><button data-a="cancel">Cancel</button></div>`:''}</div>`;
+function colV(){const b=F.cb||'',c=F.cc||'',s=F.cs||'',q=(F.cq||'').toLowerCase();
+ const L=S.colors.filter(x=>(!b||x.brand==b)&&(!c||x.cat==c)&&(!s||x.status==s)&&(x.code+' '+x.name).toLowerCase().includes(q));
+ return impV('colors')+`<div class="card"><h2>Color library (${L.length})</h2><div class="row"><select data-c="cf" data-k="cb"><option value="">All brands</option>${opts(BR,b)}</select><select data-c="cf" data-k="cc"><option value="">All categories</option>${opts(CATS,c)}</select><select data-c="cf" data-k="cs"><option value="">Any status</option>${opts(['Active','Discontinued'],s)}</select><input id="cq" data-live="cq" placeholder="Search code or name" value="${esc(F.cq||'')}"></div>
+ <div class="tw"><table><tr><th></th><th>Brand</th><th>Category</th><th>Code</th><th>Name</th><th>Status</th><th></th></tr>${L.slice(0,150).map(x=>`<tr><td>${swatch(x)}</td><td>${esc(x.brand)}</td><td>${esc(x.cat)}</td><td><b>${esc(x.code)}</b></td><td>${esc(x.name)}</td><td>${x.status}</td><td><button data-a="editcolor" data-id="${x.id}">Edit</button> <button data-a="togcolor" data-id="${x.id}">${x.status=='Active'?'Discontinue':'Reactivate'}</button> <button class="x" data-a="delcolor" data-id="${x.id}">Delete</button></td></tr>`).join('')}</table></div>${L.length>150?'<p class="m">Showing the first 150. Narrow the filters to see more.</p>':''}${S.colors.length?'':'<p class="m">The library is empty. Import a catalog CSV above or add a color below.</p>'}</div>
+ <div class="card"><h3>Add a color</h3><div class="row"><select id="ab">${opts(BR)}</select><select id="ac">${opts(CATS)}</select><input id="acode" placeholder="Code"><input id="an" placeholder="Name"><input id="ah" placeholder="HEX (optional)" size="9"><button class="p" data-a="addcolor">Add color</button></div><div class="row"><button data-a="airo">Copy all DMC colors to Airo</button><button data-a="expcolors">Export catalog CSV</button></div></div>`}
+function cvV(){const o=S.colors.filter(c=>c.brand==CV.sb&&c.cat==CV.cat).map(c=>`<option value="${esc(c.code)}">${esc(c.name)}</option>`).join('');let res='';
+ if(CV.go)res=CV.tb.length?CV.tb.map(tb=>{const m=conv(CV.sb,CV.cat,CV.code,tb);return `<h3>${esc(tb)}</h3>`+(m.length?`<div class="tw"><table><tr><th>Target</th><th>Category</th><th>Match</th><th>Rank</th><th>Source</th><th></th></tr>${m.map(x=>{const t=fc(x.tb,x.tc,x.tcode);return `<tr><td>${swatch(t)}<b>${esc(x.tb)} ${esc(x.tcode)}</b> ${esc(t?t.name:'')}</td><td>${esc(x.tc)}</td><td>${esc(x.type||'Not stated')}</td><td>${esc(x.rank||'–')}</td><td>${esc(x.src||'–')}</td><td>${x.syn?'':`<button class="x" data-a="delmap" data-id="${x.id}">Delete</button>`}</td></tr>`}).join('')}</table></div>`:`<p>No predefined mapping from ${esc(CV.sb)} ${esc(CV.code)} to ${esc(tb)} is in your database. Pick another target brand or a different source color.</p>`)}).join(''):'<p class="m">Select at least one target brand.</p>';
+ return `<div class="card"><h2>Find equivalent colors</h2><div class="row"><select data-c="cv" data-k="sb">${opts(BR,CV.sb)}</select><select data-c="cv" data-k="cat">${opts(CATS,CV.cat)}</select><input list="cvl" data-c="cv" data-k="code" value="${esc(CV.code)}" placeholder="Source color code"><datalist id="cvl">${o}</datalist></div><div class="row">${BR.filter(b=>b!=CV.sb).map(b=>`<label style="flex-direction:row;gap:4px;font-size:14px;color:inherit"><input type="checkbox" data-c="cvt" value="${b}"${CV.tb.includes(b)?' checked':''}>${b}</label>`).join('')}</div><button class="p" data-a="find">Find equivalents</button>${res}</div>`+impV('maps')+
+ `<div class="card"><h3>Add a mapping (${S.maps.length} stored)</h3><div class="row"><select id="m1">${opts(BR)}</select><select id="m2">${opts(CATS)}</select><input id="m3" placeholder="Source code" size="8"></div><div class="row"><select id="m4">${opts(BR)}</select><select id="m5">${opts(CATS)}</select><input id="m6" placeholder="Target code" size="8"><select id="m7"><option value="">Match type</option>${opts(['Exact','Closest','Approximate'])}</select><input id="m8" type="number" placeholder="Rank" style="width:70px"><input id="m9" placeholder="Notes"></div><div class="row"><button class="p" data-a="addmap">Add mapping</button><button data-a="expmaps">Export mappings CSV</button></div></div>`}
+function prV(){const L=[...S.prices].sort((a,b)=>a.brand.localeCompare(b.brand)||a.type.localeCompare(b.type)||b.date.localeCompare(a.date)),cur=new Set,seen=new Set;
+ L.forEach(p=>{const k=p.brand+p.type;if(!seen.has(k)&&p.date<=today()){seen.add(k);cur.add(p.id)}});
+ return `<div class="card"><h2>Thread prices</h2><div class="row"><select id="pb">${opts(BR)}</select><select id="pt">${opts(CATS)}</select><input id="pp" type="number" min="0" placeholder="Price per skein (₫)"><input id="pd" type="date" value="${today()}"><button class="p" data-a="addprice">Add price</button></div><p class="m">New prices are added to the history. Costs use the latest price effective today or earlier.</p><div class="tw"><table><tr><th>Brand</th><th>Type</th><th class="n">Price</th><th>Effective</th><th></th></tr>${L.map(p=>`<tr><td>${esc(p.brand)}</td><td>${esc(p.type)}</td><td class="n">${vnd(p.price)}</td><td>${p.date}</td><td>${cur.has(p.id)?'<span class="tag">Current</span>':''}</td></tr>`).join('')}</table></div></div>
+ <div class="card"><h3>Default hourly labor rate</h3><input type="number" min="0" data-c="rate" value="${S.rate||''}" placeholder="₫ per hour"></div>`}
+const dtV=()=>`<div class="card"><h2>Backup and export</h2><p class="m">Data is stored in this browser only. Export a backup regularly. The JSON backup holds patterns, colors, mappings and prices; attachment files stay in this browser’s storage.</p><div class="row"><button class="p" data-a="bk">Download JSON backup</button><label>Restore from backup<input type="file" accept=".json" data-c="rest"></label></div><div class="row"><button data-a="expall">Export patterns and recipes CSV</button><button data-a="expcost">Export cost summary CSV</button><button data-a="expcolors">Export color catalog CSV</button><button data-a="expmaps">Export mappings CSV</button></div><div class="row"><button class="x" data-a="wipe">Delete all data in this browser</button></div></div>`;
+/* small JPEG thumbnails are kept as data URLs so photos show even where blob URLs are blocked */
+const findAtt=id=>{for(const p of S.patterns){const a=p.atts.find(x=>x.id==id);if(a)return a}};
+const thumb=b=>new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;fr.onload=()=>{const im=new Image();im.onerror=rej;im.onload=()=>{const k=Math.min(1,240/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.width*k));c.height=Math.max(1,Math.round(im.height*k));const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.75))};im.src=fr.result};fr.readAsDataURL(b)});
+function r(){const id=document.activeElement&&document.activeElement.id;
+ $('#nav').innerHTML=T.map(([k,l])=>`<button data-a="tab" data-k="${k}" class="${tab==k?'on':''}">${l}</button>`).join('');
+ $('#app').innerHTML=({patterns:()=>sel&&P()?patV():listV(),colors:colV,convert:cvV,prices:prV,data:dtV})[tab]();
+ if(id){const e=document.getElementById(id);if(e){e.focus();try{e.setSelectionRange(1e4,1e4)}catch(x){}}}
+ document.querySelectorAll('[data-f]').forEach(async el=>{const id=el.dataset.f,a=findAtt(id);
+  if(el.tagName=='IMG'&&a&&a.th){el.src=a.th;return}
+  const b=await fget(id).catch(()=>null);if(!b)return;
+  if(el.tagName=='IMG'){try{const t=await thumb(b);if(a){a.th=t;save()}el.src=t}catch(x){el.src=URL.createObjectURL(b)}}else el.href=URL.createObjectURL(b)})}
+const sumRows=()=>{const o=[['Pattern ID','Pattern','Recipe','Thread cost (VND)','Labor cost (VND)','Total (VND)']];S.patterns.forEach(p=>p.recipes.forEach(x=>o.push([p.id,p.name,rn(x),Math.round(rcost(x)),Math.round(lab(p)),Math.round(rcost(x)+lab(p))])));return o};
+const act={
+ tab:d=>{tab=d.k;r();scrollTo(0,0)},back:()=>{sel=null;stage=null;r()},pview:d=>{F.pv=d.k;r()},print:()=>print(),
+ newp:()=>{S.n++;const p={id:'P-'+String(S.n).padStart(4,'0'),name:'',desc:'',w:'',h:'',created:today(),updated:today(),labor:{},recipes:[],atts:[]};S.patterns.unshift(p);sel=p.id;save();r()},
+ copyp:async()=>{const p=P(),n=JSON.parse(JSON.stringify(p));S.n++;n.id='P-'+String(S.n).padStart(4,'0');n.name=p.name?p.name+' (copy)':'';n.created=n.updated=today();n.recipes.forEach(x=>x.id=uid());
+  const keep=[];for(const a of n.atts){const old=a.id,b=await fget(old).catch(()=>null);if(!b)continue;a.id=uid();try{await fput(a.id,b);keep.push(a)}catch(x){}}
+  n.atts=keep;S.patterns.unshift(n);sel=n.id;stage=null;save();r();scrollTo(0,0)},
+ delp:async()=>{const p=P();if(!await ask('Delete '+(p.name||p.id)+' with its recipes and attachments? This cannot be undone.'))return;for(const a of p.atts)await fdel(a.id);S.patterns=S.patterns.filter(x=>x.id!=p.id);sel=null;save();r()},
+ stgopen:()=>{stage={id:null,cat:AC[0],desc:'',name:'',file:null,primary:!P().atts.some(a=>a.primary)};r()},
+ stged:d=>{const a=P().atts.find(x=>x.id==d.id);stage={id:a.id,cat:a.cat,desc:a.desc,name:a.name,file:null,primary:!!a.primary};r()},
+ stgx:()=>{stage=null;r()},
+ stgclear:()=>{stage.file=null;r()},
+ stgsave:async()=>{if(!stage)return;const p=P(),st=stage;let a=st.id?p.atts.find(x=>x.id==st.id):null;if(!a&&!st.file)return;
+  try{if(st.file){const id=a?a.id:uid(),f=st.file,type=f.type||(/pdf$/i.test(f.name)?'application/pdf':'image/bmp');await fput(id,f);if(!a){a={id,date:today()};p.atts.push(a)}a.type=type;delete a.th;if(!st.name)st.name=f.name}}catch(x){return say('The file could not be saved. Your browser may be blocking file storage.')}
+  a.name=st.name||a.name;a.cat=st.cat;a.desc=st.desc;
+  if(st.primary&&/^image/.test(a.type))p.atts.forEach(x=>x.primary=x.id==a.id);else{a.primary=false;if(!p.atts.some(x=>x.primary)){const im=p.atts.find(x=>x!==a&&/^image/.test(x.type));if(im)im.primary=true}}
+  stage=null;p.updated=today();save();r()},
+ openp:d=>{sel=d.id;stage=null;r();scrollTo(0,0)},
+ addrec:()=>{P().recipes.push({id:uid(),name:'',notes:'',lines:[{brand:'DMC',cat:CATS[0],code:'',qty:''}]});save();r()},
+ delrec:async d=>{if(await ask('Delete this recipe?')){const p=P();p.recipes=p.recipes.filter(x=>x.id!=d.r);save();r()}},
+ confirm:d=>{delete R(P(),d.r).draft;save();r()},
+ addln:d=>{const x=R(P(),d.r),l=x.lines[x.lines.length-1]||{};x.lines.push({brand:l.brand||'DMC',cat:l.cat||CATS[0],code:'',qty:''});save();r()},
+ delln:d=>{R(P(),d.r).lines.splice(+d.i,1);save();r()},
+ prim:d=>{const p=P();p.atts.forEach(a=>a.primary=a.id==d.id);save();r()},
+ delatt:async d=>{if(await ask('Remove this attachment?')){const p=P();p.atts=p.atts.filter(a=>a.id!=d.id);await fdel(d.id);save();r()}},
+ expcost:()=>dl('pattern-cost-summary.csv',toCSV(sumRows())),
+ expall:()=>{const o=[['Pattern ID','Pattern','Recipe','Brand','Category','Code','Skeins','Price/skein','Line cost']];S.patterns.forEach(p=>p.recipes.forEach(x=>x.lines.forEach(l=>o.push([p.id,p.name,rn(x),l.brand,l.cat,l.code,l.qty,price(l.brand,l.cat),Math.round(lc(l))]))));dl('patterns-recipes.csv',toCSV(o))},
+ expcolors:()=>dl('color-catalog.csv',toCSV([HC.split(',')].concat(S.colors.map(c=>[c.brand,c.cat,c.code,c.name,c.hex,c.coll,c.status,c.src])))),
+ expmaps:()=>dl('conversion-mappings.csv',toCSV([HM.split(',')].concat(S.maps.map(m=>[m.sb,m.sc,m.scode,m.tb,m.tc,m.tcode,m.type,m.rank,m.notes,m.src])))),
+ tpl:d=>dl(d.k+'-template.csv',d.k=='colors'?HC:HM),
+ errrep:()=>dl('import-errors.csv',toCSV([['Row','Problem']].concat(pend.err))),
+ cancel:()=>{pend=null;r()},
+ commit:()=>{(pend.k=='colors'?S.colors:S.maps).push(...pend.ok);pend=null;save();r()},
+ addcolor:()=>{const o={id:uid(),brand:$('#ab').value,cat:$('#ac').value,code:$('#acode').value.trim(),name:$('#an').value.trim(),hex:'',coll:'',status:'Active',src:'Manual',upd:today()},h=$('#ah').value.trim().replace('#','');
+  if(/^[0-9a-f]{6}$/i.test(h))o.hex='#'+h;if(!o.code)return say('Enter a color code.');if(S.colors.some(c=>ck(c)==ck(o)))return say('That code already exists for this brand and category.');S.colors.push(o);save();r()},
+ editcolor:async d=>{const c=S.colors.find(x=>x.id==d.id),n=await askText('Color name',c.name);if(n===null)return;const h=await askText('HEX (optional, e.g. #1a2b3c)',c.hex);c.name=n;if(h!==null)c.hex=/^#?[0-9a-f]{6}$/i.test(h)?'#'+h.replace('#',''):'';c.upd=today();save();r()},
+ togcolor:d=>{const c=S.colors.find(x=>x.id==d.id);c.status=c.status=='Active'?'Discontinued':'Active';c.upd=today();save();r()},
+ delcolor:async d=>{const c=S.colors.find(x=>x.id==d.id),used=S.maps.some(m=>(m.sb==c.brand&&m.scode==c.code)||(m.tb==c.brand&&m.tcode==c.code))||S.patterns.some(p=>p.recipes.some(x=>x.lines.some(l=>l.brand==c.brand&&l.code==c.code)));
+  if(used)return say('This color is used by a mapping or recipe. Mark it as discontinued instead.');if(await ask('Delete '+c.brand+' '+c.code+'?')){S.colors=S.colors.filter(x=>x.id!=d.id);save();r()}},
+ airo:()=>{let n=0;S.colors.filter(c=>c.brand=='DMC').forEach(c=>{if(!fc('Airo',c.cat,c.code)){S.colors.push({...c,id:uid(),brand:'Airo',src:'Copied from DMC',upd:today()});n++}});save();say(n+' DMC colors copied to Airo.');r()},
+ find:()=>{CV.go=1;r()},
+ delmap:d=>{S.maps=S.maps.filter(m=>m.id!=d.id);save();r()},
+ addmap:()=>{const v=i=>$('#m'+i).value.trim(),a=fc(v(1),v(2),v(3)),b=fc(v(4),v(5),v(6));if(!a||!b)return say('Both colors must exist in the color library. Check the brand, category and code.');
+  S.maps.push({id:uid(),sb:a.brand,sc:a.cat,scode:a.code,tb:b.brand,tc:b.cat,tcode:b.code,type:v(7),rank:v(8),notes:v(9),src:'Manual'});save();r()},
+ addprice:()=>{const p=+$('#pp').value;if(!(p>0))return say('Enter a price above 0.');S.prices.push({id:uid(),brand:$('#pb').value,type:$('#pt').value,price:p,date:$('#pd').value||today(),upd:today()});save();r()},
+ wipe:async()=>{if(!await ask('Delete ALL patterns, colors, mappings, prices and attachments in this browser? This cannot be undone.'))return;(await idb).close();localStorage.removeItem(K);indexedDB.deleteDatabase('ems-files').onsuccess=()=>location.reload()},
+ bk:()=>dl('ems-backup-'+today()+'.json',JSON.stringify(S),'application/json')
+};
+const ch={
+ ps:e=>{F.ps=e.value;r()},cf:e=>{F[e.dataset.k]=e.value;r()},rate:e=>{S.rate=+e.value||0;save()},
+ pf:e=>{const p=P();p[e.dataset.k]=e.value;p.updated=today();save();},
+ lab:e=>{const p=P();p.labor=p.labor||{};p.labor[e.dataset.k]=e.value===''?'':+e.value;save();r()},
+ rname:e=>{R(P(),e.dataset.r).name=e.value;save()},
+ ln:e=>{const p=P(),l=R(p,e.dataset.r).lines[e.dataset.i],k=e.dataset.k;let v=e.value;
+  if(k=='qty')v=v===''?'':Math.round(+v*100)/100;l[k]=v;
+  if(k=='brand'||k=='cat'){l.code='';delete l.hint}
+  if(k=='code'&&v){const f=fc(l.brand,l.cat,v);if(f)l.code=f.code;else if(S.colors.some(c=>c.brand==l.brand&&c.cat==l.cat)){say(l.brand+' '+v+' is not in the color library for this category. Pick a code from the list.');l.code=''}}
+  p.updated=today();save();r()},
+ conv:e=>{const tb=e.value;if(!tb)return;const p=P(),src=R(p,e.dataset.r);
+  p.recipes.push({id:uid(),name:'',notes:'Converted from '+rn(src),draft:1,lines:src.lines.map(l=>{const ms=conv(l.brand,l.cat,l.code,tb),m=ms[0];
+   return{brand:tb,cat:m?m.tc:l.cat,code:m?m.tcode:'',qty:l.qty,hint:ms.length?`${l.brand} ${l.code} maps to: ${ms.map(x=>x.tcode+' ('+(x.type||'match type not stated')+')').join(', ')}`:`No predefined mapping for ${l.brand} ${l.code}. Choose a color manually.`}})});save();r()},
+ stg:e=>{stage[e.dataset.k]=e.value},
+ stgf:e=>{const f=e.files[0];if(!f)return;if(!/\.(png|jpe?g|bmp|pdf)$/i.test(f.name)){e.value='';return say(f.name+' is not supported. Use PNG, JPG, BMP or PDF.')}stage.file=f;if(!stage.id)stage.name=f.name;r()},
+ stgp:e=>{stage.primary=e.checked},
+ adesc:e=>{P().atts.find(a=>a.id==e.dataset.id).desc=e.value;save()},
+ imp:async e=>{const f=e.files[0];if(!f)return;pend={k:e.dataset.k,...check(e.dataset.k,recs(await f.text()))};r()},
+ cv:e=>{CV[e.dataset.k]=e.value;if(e.dataset.k=='sb')CV.tb=CV.tb.filter(b=>b!=e.value);CV.go=0;r()},
+ cvt:e=>{CV.tb=e.checked?[...CV.tb,e.value]:CV.tb.filter(b=>b!=e.value);CV.go=0},
+ rest:async e=>{try{const d=JSON.parse(await e.files[0].text());if(!Array.isArray(d.patterns))throw 0;if(await ask('Replace all current data with this backup?')){S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d);save();sel=null;r()}}catch(x){say('That file is not a valid EMS backup.')}}
+};
+document.addEventListener('click',e=>{const a=e.target.closest('[data-a]');if(a&&act[a.dataset.a])act[a.dataset.a](a.dataset,a)});
+document.addEventListener('change',e=>{const c=e.target.dataset&&e.target.dataset.c;if(c&&ch[c])ch[c](e.target)});
+document.addEventListener('input',e=>{const l=e.target.dataset&&e.target.dataset.live;if(l){F[l]=e.target.value;r()}});
+r();
+</script></body></html>
