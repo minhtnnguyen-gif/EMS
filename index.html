@@ -47,8 +47,8 @@ const ask=m=>dlg(m,'ask'),say=m=>dlg(m,'say'),askText=(m,v)=>dlg(m,'text',v);
 const opts=(a,v)=>a.map(x=>`<option${x==v?' selected':''}>${esc(x)}</option>`).join('');
 if(!localStorage['ems-wiped']){try{localStorage.removeItem('ems-v1');indexedDB.deleteDatabase('ems-files');localStorage['ems-wiped']='1'}catch(e){}}
 let S={};try{S=JSON.parse(localStorage[K])}catch(e){}
-S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},S);
-const save=()=>{try{localStorage[K]=JSON.stringify(S)}catch(e){say('Browser storage is full. Export a backup, then remove unused data.')}};
+S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},S);S.patterns.forEach(p=>p.atts.forEach(a=>delete a.th));
+const save=()=>{try{localStorage[K]=JSON.stringify(S,(k,v)=>k=='th'?undefined:v)}catch(e){say('Browser storage is full. Export a backup, then remove unused data.')}};
 let tab='patterns',sel=null,pend=null,stage=null,F={},CV={sb:'DMC',cat:CATS[0],code:'',tb:[],go:0};
 /* attachment files live in IndexedDB so originals are preserved */
 const idb=new Promise((r,j)=>{const q=indexedDB.open('ems-files',1);q.onupgradeneeded=()=>q.result.createObjectStore('f');q.onsuccess=()=>r(q.result);q.onerror=()=>j(q.error)});idb.catch(()=>{});
@@ -129,10 +129,11 @@ function r(){const id=document.activeElement&&document.activeElement.id;
  $('#nav').innerHTML=T.map(([k,l])=>`<button data-a="tab" data-k="${k}" class="${tab==k?'on':''}">${l}</button>`).join('');
  $('#app').innerHTML=({patterns:()=>sel&&P()?patV():listV(),colors:colV,convert:cvV,prices:prV,data:dtV})[tab]();
  if(id){const e=document.getElementById(id);if(e){e.focus();try{e.setSelectionRange(1e4,1e4)}catch(x){}}}
- document.querySelectorAll('[data-f]').forEach(async el=>{const id=el.dataset.f,a=findAtt(id);
-  if(el.tagName=='IMG'&&a&&a.th){el.src=a.th;return}
-  const b=await fget(id).catch(()=>null);if(!b)return;
-  if(el.tagName=='IMG'){try{const t=await thumb(b);if(a){a.th=t;save()}el.src=t}catch(x){el.src=URL.createObjectURL(b)}}else el.href=URL.createObjectURL(b)})}
+ document.querySelectorAll('[data-f]').forEach(async el=>{const id=el.dataset.f;
+  if(el.tagName=='IMG'){let t=await fget('th'+id).catch(()=>null);
+   if(!t){const b=await fget(id).catch(()=>null);if(!b)return;try{t=await thumb(b);fput('th'+id,t).catch(()=>{})}catch(x){el.src=URL.createObjectURL(b);return}}
+   el.src=t}
+  else{const b=await fget(id).catch(()=>null);if(b)el.href=URL.createObjectURL(b)}})}
 const sumRows=()=>{const o=[['Pattern ID','Pattern','Recipe','Thread cost (VND)','Labor cost (VND)','Total (VND)']];S.patterns.forEach(p=>p.recipes.forEach(x=>o.push([p.id,p.name,rn(x),Math.round(rcost(x)),Math.round(lab(p)),Math.round(rcost(x)+lab(p))])));return o};
 const act={
  tab:d=>{tab=d.k;r();scrollTo(0,0)},back:()=>{sel=null;stage=null;r()},pview:d=>{F.pv=d.k;r()},print:()=>print(),
@@ -140,13 +141,13 @@ const act={
  copyp:async()=>{const p=P(),n=JSON.parse(JSON.stringify(p));S.n++;n.id='P-'+String(S.n).padStart(4,'0');n.name=p.name?p.name+' (copy)':'';n.created=n.updated=today();n.recipes.forEach(x=>x.id=uid());
   const keep=[];for(const a of n.atts){const old=a.id,b=await fget(old).catch(()=>null);if(!b)continue;a.id=uid();try{await fput(a.id,b);keep.push(a)}catch(x){}}
   n.atts=keep;S.patterns.unshift(n);sel=n.id;stage=null;save();r();scrollTo(0,0)},
- delp:async()=>{const p=P();if(!await ask('Delete '+(p.name||p.id)+' with its recipes and attachments? This cannot be undone.'))return;for(const a of p.atts)await fdel(a.id);S.patterns=S.patterns.filter(x=>x.id!=p.id);sel=null;save();r()},
+ delp:async()=>{const p=P();if(!await ask('Delete '+(p.name||p.id)+' with its recipes and attachments? This cannot be undone.'))return;for(const a of p.atts){await fdel(a.id);fdel('th'+a.id)}S.patterns=S.patterns.filter(x=>x.id!=p.id);sel=null;save();r()},
  stgopen:()=>{stage={id:null,cat:AC[0],desc:'',name:'',file:null,primary:!P().atts.some(a=>a.primary)};r()},
  stged:d=>{const a=P().atts.find(x=>x.id==d.id);stage={id:a.id,cat:a.cat,desc:a.desc,name:a.name,file:null,primary:!!a.primary};r()},
  stgx:()=>{stage=null;r()},
  stgclear:()=>{stage.file=null;r()},
  stgsave:async()=>{if(!stage)return;const p=P(),st=stage;let a=st.id?p.atts.find(x=>x.id==st.id):null;if(!a&&!st.file)return;
-  try{if(st.file){const id=a?a.id:uid(),f=st.file,type=f.type||(/pdf$/i.test(f.name)?'application/pdf':'image/bmp');await fput(id,f);if(!a){a={id,date:today()};p.atts.push(a)}a.type=type;delete a.th;if(!st.name)st.name=f.name}}catch(x){return say('The file could not be saved. Your browser may be blocking file storage.')}
+  try{if(st.file){const id=a?a.id:uid(),f=st.file,type=f.type||(/pdf$/i.test(f.name)?'application/pdf':'image/bmp');await fput(id,f);if(!a){a={id,date:today()};p.atts.push(a)}a.type=type;fdel('th'+a.id);if(!st.name)st.name=f.name}}catch(x){return say('The file could not be saved. Your browser may be blocking file storage.')}
   a.name=st.name||a.name;a.cat=st.cat;a.desc=st.desc;
   if(st.primary&&/^image/.test(a.type))p.atts.forEach(x=>x.primary=x.id==a.id);else{a.primary=false;if(!p.atts.some(x=>x.primary)){const im=p.atts.find(x=>x!==a&&/^image/.test(x.type));if(im)im.primary=true}}
   stage=null;p.updated=today();save();r()},
@@ -157,7 +158,7 @@ const act={
  addln:d=>{const x=R(P(),d.r),l=x.lines[x.lines.length-1]||{};x.lines.push({brand:l.brand||'DMC',cat:l.cat||CATS[0],code:'',qty:''});save();r()},
  delln:d=>{R(P(),d.r).lines.splice(+d.i,1);save();r()},
  prim:d=>{const p=P();p.atts.forEach(a=>a.primary=a.id==d.id);save();r()},
- delatt:async d=>{if(await ask('Remove this attachment?')){const p=P();p.atts=p.atts.filter(a=>a.id!=d.id);await fdel(d.id);save();r()}},
+ delatt:async d=>{if(await ask('Remove this attachment?')){const p=P();p.atts=p.atts.filter(a=>a.id!=d.id);await fdel(d.id);fdel('th'+d.id);save();r()}},
  expcost:()=>dl('pattern-cost-summary.csv',toCSV(sumRows())),
  expall:()=>{const o=[['Pattern ID','Pattern','Recipe','Brand','Category','Code','Skeins','Price/skein','Line cost']];S.patterns.forEach(p=>p.recipes.forEach(x=>x.lines.forEach(l=>o.push([p.id,p.name,rn(x),l.brand,l.cat,l.code,l.qty,price(l.brand,l.cat),Math.round(lc(l))]))));dl('patterns-recipes.csv',toCSV(o))},
  expcolors:()=>dl('color-catalog.csv',toCSV([HC.split(',')].concat(S.colors.map(c=>[c.brand,c.cat,c.code,c.name,c.hex,c.coll,c.status,c.src])))),
@@ -203,7 +204,7 @@ const ch={
  imp:async e=>{const f=e.files[0];if(!f)return;pend={k:e.dataset.k,...check(e.dataset.k,recs(await f.text()))};r()},
  cv:e=>{CV[e.dataset.k]=e.value;if(e.dataset.k=='sb')CV.tb=CV.tb.filter(b=>b!=e.value);CV.go=0;r()},
  cvt:e=>{CV.tb=e.checked?[...CV.tb,e.value]:CV.tb.filter(b=>b!=e.value);CV.go=0},
- rest:async e=>{try{const d=JSON.parse(await e.files[0].text());if(!Array.isArray(d.patterns))throw 0;if(await ask('Replace all current data with this backup?')){const fl=d._files||{};delete d._files;
+ rest:async e=>{try{const d=JSON.parse(await e.files[0].text());if(!Array.isArray(d.patterns))throw 0;if(await ask('Replace all current data with this backup?')){const fl=d._files||{};delete d._files;d.patterns.forEach(p=>(p.atts||[]).forEach(a=>delete a.th));
    for(const id in fl){const o=fl[id],u=atob(o.data.split(',')[1]),n=new Uint8Array(u.length);for(let i=0;i<u.length;i++)n[i]=u.charCodeAt(i);await fput(id,new Blob([n],{type:o.type}))}
    S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d);save();sel=null;r()}}catch(x){say('That file is not a valid EMS backup.')}}
 };
