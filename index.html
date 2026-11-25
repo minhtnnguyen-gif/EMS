@@ -28,7 +28,7 @@ input:focus::placeholder,textarea:focus::placeholder{color:transparent}
 .note{background:#fff7dd;border:1px solid #ecd78a;border-radius:6px;padding:8px;margin-bottom:8px}
 @media print{header,button,.noprint,input[type=file]{display:none!important}body{background:#fff}.card{border:0}}
 </style></head><body>
-<header><div class="top"><b id="ttl">Embroidery Management System</b><select id="lang" data-c="lang" aria-label="Language"><option value="en">English</option><option value="vi">Tiếng Việt</option></select></div><nav id="nav"></nav></header>
+<header><div class="top"><b id="ttl">Embroidery Management System</b><span class="row" style="margin:0"><span id="sync" class="m" style="color:#cfe5e2"></span><button id="auth" data-a="auth" style="display:none;padding:3px 10px"></button><select id="mode" data-c="mode" aria-label="Data source" style="display:none"><option value="pub"></option><option value="local"></option></select><select id="lang" data-c="lang" aria-label="Language"><option value="en">English</option><option value="vi">Tiếng Việt</option></select></span></div><nav id="nav"></nav></header>
 <main id="app"></main>
 <script>
 const BR=['DMC','Cosmo','Olympus','Anchor','Madeira','Au Ver à Soie','Gütermann','Au Chinois','Airo'];
@@ -48,12 +48,17 @@ const opts=(a,v)=>a.map(x=>`<option${x==v?' selected':''}>${esc(x)}</option>`).j
 if(!localStorage['ems-wiped']){try{localStorage.removeItem('ems-v1');indexedDB.deleteDatabase('ems-files');localStorage['ems-wiped']='1'}catch(e){}}
 let S={};try{S=JSON.parse(localStorage[K])}catch(e){}
 S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},S);S.patterns.forEach(p=>p.atts.forEach(a=>delete a.th));
-const save=()=>{try{localStorage[K]=JSON.stringify(S,(k,v)=>k=='th'?undefined:v)}catch(e){say('Browser storage is full. Export a backup, then remove unused data.')}};
+let LOCAL=S,PUB=null,ro=false,CLOUD=true;/* PUB = published data.json (read-only for visitors); LOCAL = this browser's editable copy */
+const OWN=(()=>{try{if(location.hash=='#edit')localStorage['ems-owner']='1';return localStorage['ems-owner']=='1'}catch(e){return location.hash=='#edit'}})();
+const OKA=new Set(['tab','back','openp','pview','print','find','expcost','expall','expcolors','expmaps','auth']);
+const save=()=>{if(ro)return;if(CLOUD){sched();return}try{localStorage[K]=JSON.stringify(S,(k,v)=>k=='th'?undefined:v)}catch(e){say('Browser storage is full. Export a backup, then remove unused data.')}};
 let tab='patterns',sel=null,pend=null,stage=null,F={},CV={sb:'DMC',cat:CATS[0],code:'',tb:[],go:0};
 /* attachment files live in IndexedDB so originals are preserved */
 const idb=new Promise((r,j)=>{const q=indexedDB.open('ems-files',1);q.onupgradeneeded=()=>q.result.createObjectStore('f');q.onsuccess=()=>r(q.result);q.onerror=()=>j(q.error)});idb.catch(()=>{});
 const fput=async(id,b)=>{const d=await idb;return new Promise((r,j)=>{const t=d.transaction('f','readwrite');t.objectStore('f').put(b,id);t.oncomplete=r;t.onerror=t.onabort=()=>j(t.error)})};
-const fget=async id=>{const d=await idb;return new Promise(r=>{const q=d.transaction('f').objectStore('f').get(id);q.onsuccess=()=>r(q.result)})};
+const idbGet=async k=>{const d=await idb;return new Promise(r=>{const q=d.transaction('f').objectStore('f').get(k);q.onsuccess=()=>r(q.result)})};
+const fget=async k=>{if(ro||CLOUD){const th=k.startsWith('th:'),a=findAtt(th?k.slice(3):k);if(!a||!a.url)return;if(th)return a.turl;try{const x=await fetch(a.url);return x.ok?await x.blob():undefined}catch(e){}return}
+ return idbGet(k)};
 const fdel=async id=>{const d=await idb;d.transaction('f','readwrite').objectStore('f').delete(id)};
 /* data helpers */
 const P=()=>S.patterns.find(p=>p.id==sel),R=(p,id)=>p.recipes.find(r=>r.id==id);
@@ -107,27 +112,37 @@ function patV(){const p=P(),L=p.labor||{},f=(k,ph,t,x)=>`<label style="${x||''}"
  <div class="card"><h3>Labor (shared by all recipes)</h3><div class="row">${[['hrs','Labor hours'],['rate','Hourly rate (₫)'],['ov','Direct cost override (₫)']].map(([k,t])=>`<label>${t}<input type="number" min="0" step="any" data-c="lab" data-k="${k}" value="${L[k]===undefined?'':L[k]}"></label>`).join('')}</div><div>Labor cost: <b>${vnd(lb)}</b> <span class="m">(hours × hourly rate; a blank rate uses the default rate, and a direct cost override replaces the calculation)</span></div></div>
  <div class="row"><h2 style="margin:0;flex:1">Thread recipes</h2><button class="p noprint" data-a="addrec">New recipe</button></div>${rs.map(r=>recH(p,r)).join('')||'<p class="m">No recipes yet. Add one to calculate thread cost.</p>'}
  ${rs.length?`<div class="card"><h3>Cost comparison</h3><div class="tw"><table><tr><th>Recipe</th><th class="n">Thread</th><th class="n">Labor</th><th class="n">Total</th></tr>${rs.map(r=>{const t=rcost(r)+lb;return `<tr class="${t==best?'best':''}"><td>${esc(rn(r))}${r.draft?' (draft)':''}</td><td class="n">${vnd(rcost(r))}</td><td class="n">${vnd(lb)}</td><td class="n">${vnd(t)}</td></tr>`}).join('')}</table></div></div>`:''}`}
-const impV=k=>`<div class="card"><h3>Import ${k=='colors'?'color catalog':'conversion mappings'} (CSV)</h3><div class="row"><input type="file" accept=".csv,text/csv" data-c="imp" data-k="${k}"><button data-a="tpl" data-k="${k}">Download template</button></div>${pend&&pend.k==k?`<p><b>${pend.ok.length}</b> valid rows, <b class="${pend.err.length?'bad':''}">${pend.err.length}</b> with errors. Nothing is saved until you confirm.</p>${pend.err.slice(0,8).map(e=>`<div class="m bad">Row ${e[0]}: ${esc(e[1])}</div>`).join('')}<div class="row">${pend.err.length?'<button data-a="errrep">Download error report</button>':''}<button class="p" data-a="commit"${pend.ok.length?'':' disabled'}>Import ${pend.ok.length} valid rows</button><button data-a="cancel">Cancel</button></div>`:''}</div>`;
+const impV=k=>`<div class="card edit"><h3>Import ${k=='colors'?'color catalog':'conversion mappings'} (CSV)</h3><div class="row"><input type="file" accept=".csv,text/csv" data-c="imp" data-k="${k}"><button data-a="tpl" data-k="${k}">Download template</button></div>${pend&&pend.k==k?`<p><b>${pend.ok.length}</b> valid rows, <b class="${pend.err.length?'bad':''}">${pend.err.length}</b> with errors. Nothing is saved until you confirm.</p>${pend.err.slice(0,8).map(e=>`<div class="m bad">Row ${e[0]}: ${esc(e[1])}</div>`).join('')}<div class="row">${pend.err.length?'<button data-a="errrep">Download error report</button>':''}<button class="p" data-a="commit"${pend.ok.length?'':' disabled'}>Import ${pend.ok.length} valid rows</button><button data-a="cancel">Cancel</button></div>`:''}</div>`;
 function colV(){const b=F.cb||'',c=F.cc||'',s=F.cs||'',q=(F.cq||'').toLowerCase();
  const L=S.colors.filter(x=>(!b||x.brand==b)&&(!c||x.cat==c)&&(!s||x.status==s)&&(x.code+' '+x.name).toLowerCase().includes(q));
  return impV('colors')+`<div class="card"><h2>Color library (${L.length})</h2><div class="row"><select data-c="cf" data-k="cb"><option value="">All brands</option>${opts(BR,b)}</select><select data-c="cf" data-k="cc"><option value="">All categories</option>${opts(CATS,c)}</select><select data-c="cf" data-k="cs"><option value="">Any status</option>${opts(['Active','Discontinued'],s)}</select><input id="cq" data-live="cq" placeholder="Search code or name" value="${esc(F.cq||'')}"></div>
  <div class="tw"><table><tr><th></th><th>Brand</th><th>Category</th><th>Code</th><th>Name</th><th>Status</th><th></th></tr>${L.slice(0,150).map(x=>`<tr><td>${swatch(x)}</td><td>${esc(x.brand)}</td><td>${esc(x.cat)}</td><td><b>${esc(x.code)}</b></td><td>${esc(x.name)}</td><td>${x.status}</td><td><button data-a="editcolor" data-id="${x.id}">Edit</button> <button data-a="togcolor" data-id="${x.id}">${x.status=='Active'?'Discontinue':'Reactivate'}</button> <button class="x" data-a="delcolor" data-id="${x.id}">Delete</button></td></tr>`).join('')}</table></div>${L.length>150?'<p class="m">Showing the first 150. Narrow the filters to see more.</p>':''}${S.colors.length?'':'<p class="m">The library is empty. Import a catalog CSV above or add a color below.</p>'}</div>
- <div class="card"><h3>Add a color</h3><div class="row"><select id="ab">${opts(BR)}</select><select id="ac">${opts(CATS)}</select><input id="acode" placeholder="Code"><input id="an" placeholder="Name"><input id="ah" placeholder="HEX (optional)" size="9"><button class="p" data-a="addcolor">Add color</button></div><div class="row"><button data-a="airo">Copy all DMC colors to Airo</button><button data-a="expcolors">Export catalog CSV</button></div></div>`}
+ <div class="card edit"><h3>Add a color</h3><div class="row"><select id="ab">${opts(BR)}</select><select id="ac">${opts(CATS)}</select><input id="acode" placeholder="Code"><input id="an" placeholder="Name"><input id="ah" placeholder="HEX (optional)" size="9"><button class="p" data-a="addcolor">Add color</button></div><div class="row"><button data-a="airo">Copy all DMC colors to Airo</button><button data-a="expcolors">Export catalog CSV</button></div></div>`}
 function cvV(){const o=S.colors.filter(c=>c.brand==CV.sb&&c.cat==CV.cat).map(c=>`<option value="${esc(c.code)}">${esc(c.name)}</option>`).join('');let res='';
  if(CV.go)res=CV.tb.length?CV.tb.map(tb=>{const m=conv(CV.sb,CV.cat,CV.code,tb);return `<h3>${esc(tb)}</h3>`+(m.length?`<div class="tw"><table><tr><th>Target</th><th>Category</th><th>Match</th><th>Rank</th><th>Source</th><th></th></tr>${m.map(x=>{const t=fc(x.tb,x.tc,x.tcode);return `<tr><td>${swatch(t)}<b>${esc(x.tb)} ${esc(x.tcode)}</b> ${esc(t?t.name:'')}</td><td>${esc(x.tc)}</td><td>${esc(x.type||'Not stated')}</td><td>${esc(x.rank||'–')}</td><td>${esc(x.src||'–')}</td><td>${x.syn?'':`<button class="x" data-a="delmap" data-id="${x.id}">Delete</button>`}</td></tr>`}).join('')}</table></div>`:`<p>No predefined mapping from ${esc(CV.sb)} ${esc(CV.code)} to ${esc(tb)} is in your database. Pick another target brand or a different source color.</p>`)}).join(''):'<p class="m">Select at least one target brand.</p>';
  return `<div class="card"><h2>Find equivalent colors</h2><div class="row"><select data-c="cv" data-k="sb">${opts(BR,CV.sb)}</select><select data-c="cv" data-k="cat">${opts(CATS,CV.cat)}</select><input list="cvl" data-c="cv" data-k="code" value="${esc(CV.code)}" placeholder="Source color code"><datalist id="cvl">${o}</datalist></div><div class="row">${BR.filter(b=>b!=CV.sb).map(b=>`<label style="flex-direction:row;gap:4px;font-size:14px;color:inherit"><input type="checkbox" data-c="cvt" value="${b}"${CV.tb.includes(b)?' checked':''}>${b}</label>`).join('')}</div><button class="p" data-a="find">Find equivalents</button>${res}</div>`+impV('maps')+
- `<div class="card"><h3>Add a mapping (${S.maps.length} stored)</h3><div class="row"><select id="m1">${opts(BR)}</select><select id="m2">${opts(CATS)}</select><input id="m3" placeholder="Source code" size="8"></div><div class="row"><select id="m4">${opts(BR)}</select><select id="m5">${opts(CATS)}</select><input id="m6" placeholder="Target code" size="8"><select id="m7"><option value="">Match type</option>${opts(['Exact','Closest','Approximate'])}</select><input id="m8" type="number" placeholder="Rank" style="width:70px"><input id="m9" placeholder="Notes"></div><div class="row"><button class="p" data-a="addmap">Add mapping</button><button data-a="expmaps">Export mappings CSV</button></div></div>`}
+ `<div class="card edit"><h3>Add a mapping (${S.maps.length} stored)</h3><div class="row"><select id="m1">${opts(BR)}</select><select id="m2">${opts(CATS)}</select><input id="m3" placeholder="Source code" size="8"></div><div class="row"><select id="m4">${opts(BR)}</select><select id="m5">${opts(CATS)}</select><input id="m6" placeholder="Target code" size="8"><select id="m7"><option value="">Match type</option>${opts(['Exact','Closest','Approximate'])}</select><input id="m8" type="number" placeholder="Rank" style="width:70px"><input id="m9" placeholder="Notes"></div><div class="row"><button class="p" data-a="addmap">Add mapping</button><button data-a="expmaps">Export mappings CSV</button></div></div>`}
 function prV(){const L=[...S.prices].sort((a,b)=>a.brand.localeCompare(b.brand)||a.type.localeCompare(b.type)||b.date.localeCompare(a.date)),cur=new Set,seen=new Set;
  L.forEach(p=>{const k=p.brand+p.type;if(!seen.has(k)&&p.date<=today()){seen.add(k);cur.add(p.id)}});
- return `<div class="card"><h2>Thread prices</h2><div class="row"><select id="pb">${opts(BR)}</select><select id="pt">${opts(CATS)}</select><input id="pp" type="number" min="0" placeholder="Price per skein (₫)"><input id="pd" type="date" value="${today()}"><button class="p" data-a="addprice">Add price</button></div><p class="m">New prices are added to the history. Costs use the latest price effective today or earlier.</p><div class="tw"><table><tr><th>Brand</th><th>Type</th><th class="n">Price</th><th>Effective</th><th></th></tr>${L.map(p=>`<tr><td>${esc(p.brand)}</td><td>${esc(p.type)}</td><td class="n">${vnd(p.price)}</td><td>${p.date}</td><td>${cur.has(p.id)?'<span class="tag">Current</span>':''}</td></tr>`).join('')}</table></div></div>
+ return `<div class="card"><h2>Thread prices</h2><div class="row edit"><select id="pb">${opts(BR)}</select><select id="pt">${opts(CATS)}</select><input id="pp" type="number" min="0" placeholder="Price per skein (₫)"><input id="pd" type="date" value="${today()}"><button class="p" data-a="addprice">Add price</button></div><p class="m edit">New prices are added to the history. Costs use the latest price effective today or earlier.</p><div class="tw"><table><tr><th>Brand</th><th>Type</th><th class="n">Price</th><th>Effective</th><th></th></tr>${L.map(p=>`<tr><td>${esc(p.brand)}</td><td>${esc(p.type)}</td><td class="n">${vnd(p.price)}</td><td>${p.date}</td><td>${cur.has(p.id)?'<span class="tag">Current</span>':''}</td></tr>`).join('')}</table></div></div>
  <div class="card"><h3>Default hourly labor rate</h3><input type="number" min="0" data-c="rate" value="${S.rate||''}" placeholder="₫ per hour"></div>`}
-const dtV=()=>`<div class="card"><h2>Backup and export</h2><p class="m">Data is stored in this browser only. Export a backup regularly. The JSON backup holds patterns, recipes, colors, mappings, prices and attachment files, so you can move everything to another browser or device with Restore from backup.</p><div class="row"><button class="p" data-a="bk">Download JSON backup</button><label>Restore from backup<input type="file" accept=".json" data-c="rest"></label></div><div class="row"><button data-a="expall">Export patterns and recipes CSV</button><button data-a="expcost">Export cost summary CSV</button><button data-a="expcolors">Export color catalog CSV</button><button data-a="expmaps">Export mappings CSV</button></div><div class="row"><button class="x" data-a="wipe">Delete all data in this browser</button></div></div>`;
+const dtV=()=>`<div class="card"><h2>Backup and export</h2><p class="m edit">${CLOUD?'Data is stored in the shared online database. Export a backup regularly.':'Data is stored in this browser only. Export a backup regularly.'} The JSON backup holds patterns, recipes, colors, mappings, prices and attachment files, so you can move everything to another browser or device with Restore from backup.</p><div class="row"><button class="p" data-a="bk">Download JSON backup</button><label>Restore from backup<input type="file" accept=".json" data-c="rest"></label></div><div class="row"><button data-a="expall">Export patterns and recipes CSV</button><button data-a="expcost">Export cost summary CSV</button><button data-a="expcolors">Export color catalog CSV</button><button data-a="expmaps">Export mappings CSV</button></div><div class="row"><button class="x" data-a="wipe">Delete all data in this browser</button></div></div><div class="card edit"><h3>Publish for other users</h3><p class="m">Creates a ZIP containing data.json and a files folder. Unzip it and upload both into the root of your GitHub repository, next to index.html. Everyone who opens the site will then see this data (read-only). Photos are resized to keep the site fast.</p><div class="row"><button class="p" data-a="pubzip">Create publish package (ZIP)</button>${PUB?'<button data-a="loadpub">Replace my editable data with the published data</button>':''}</div></div>${CLOUD?'<div class="card edit"><h3>Online database</h3><p class="m">Upload the patterns, colors, prices and attachment photos stored in this browser to the shared online database. This replaces everything that is currently online.</p><button class="p" data-a="uplocal">Upload the data in this browser to the online database</button></div>':''}`;
 /* small JPEG thumbnails are kept as data URLs so photos show even where blob URLs are blocked */
 const findAtt=id=>{for(const p of S.patterns){const a=p.atts.find(x=>x.id==id);if(a)return a}};
 const thumb=b=>new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;fr.onload=()=>{const im=new Image();im.onerror=rej;im.onload=()=>{const k=Math.min(1,240/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.width*k));c.height=Math.max(1,Math.round(im.height*k));const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.75))};im.src=fr.result};fr.readAsDataURL(b)});
 /* language: Vietnamese labels are applied to the rendered page; stored values and your data stay unchanged */
 let lang='en';try{lang=localStorage['ems-lang']||'en'}catch(e){}
 const VI=new Map(Object.entries({
+'Online database':'Cơ sở dữ liệu trực tuyến','Upload the patterns, colors, prices and attachment photos stored in this browser to the shared online database. This replaces everything that is currently online.':'Tải mẫu thêu, màu, giá và ảnh đính kèm đang lưu trong trình duyệt này lên cơ sở dữ liệu trực tuyến dùng chung. Thao tác này sẽ thay thế toàn bộ dữ liệu đang có trực tuyến.',
+'Upload the data in this browser to the online database':'Tải dữ liệu trong trình duyệt này lên cơ sở dữ liệu trực tuyến','Replace ALL online data with the data stored in this browser?':'Thay TOÀN BỘ dữ liệu trực tuyến bằng dữ liệu lưu trong trình duyệt này?','No data found in this browser to upload.':'Không tìm thấy dữ liệu nào trong trình duyệt này để tải lên.',
+'Sign in to edit':'Đăng nhập để chỉnh sửa','Email':'Email','Password':'Mật khẩu','Sign in':'Đăng nhập','Wrong email or password.':'Sai email hoặc mật khẩu.','Could not reach the online database. Try again.':'Không kết nối được cơ sở dữ liệu trực tuyến. Hãy thử lại.',
+'You are signed in, but this account is not on the editors list. You can view the data but not change it.':'Bạn đã đăng nhập nhưng tài khoản này chưa có trong danh sách người được chỉnh sửa. Bạn chỉ có thể xem dữ liệu, không thể thay đổi.',
+'Could not save to the online database. Your last change was not saved. Check your connection and that your account is on the editors list.':'Không lưu được lên cơ sở dữ liệu trực tuyến. Thay đổi gần nhất chưa được lưu. Hãy kiểm tra kết nối mạng và xem tài khoản của bạn có trong danh sách người được chỉnh sửa không.',
+'Could not connect to the online database, so the data stored in this browser is shown instead.':'Không kết nối được cơ sở dữ liệu trực tuyến, nên đang hiển thị dữ liệu lưu trong trình duyệt này.',
+'Data is stored in the shared online database. Export a backup regularly. The JSON backup holds patterns, recipes, colors, mappings, prices and attachment files, so you can move everything to another browser or device with Restore from backup.':'Dữ liệu được lưu trong cơ sở dữ liệu trực tuyến dùng chung. Hãy sao lưu thường xuyên. Tệp sao lưu JSON gồm mẫu thêu, công thức, màu, quy đổi, giá và các tệp đính kèm, nên bạn có thể chuyển toàn bộ sang trình duyệt hoặc thiết bị khác bằng chức năng Khôi phục từ bản sao lưu.',
+'Publish for other users':'Công bố cho người dùng khác','Create publish package (ZIP)':'Tạo gói công bố (ZIP)','Replace my editable data with the published data':'Thay dữ liệu của tôi bằng dữ liệu đã công bố','Replace your editable data with the published data?':'Thay dữ liệu có thể sửa của bạn bằng dữ liệu đã công bố?',
+'Creates a ZIP containing data.json and a files folder. Unzip it and upload both into the root of your GitHub repository, next to index.html. Everyone who opens the site will then see this data (read-only). Photos are resized to keep the site fast.':'Tạo tệp ZIP gồm data.json và thư mục files. Hãy giải nén và tải cả hai lên thư mục gốc của kho GitHub, cạnh tệp index.html. Sau đó, mọi người mở trang web sẽ thấy dữ liệu này (chỉ xem). Ảnh được thu nhỏ để trang tải nhanh.',
+'Could not load the ZIP library. Check your internet connection and try again.':'Không tải được thư viện ZIP. Hãy kiểm tra kết nối mạng rồi thử lại.','Some attachments could not be added to the package and were left out.':'Một số tệp đính kèm không thể đưa vào gói và đã bị bỏ qua.',
 'Patterns':'Mẫu thêu','Colors':'Màu chỉ','Convert':'Quy đổi màu','Prices & labor':'Giá & nhân công','Backup':'Sao lưu',
 'Search patterns':'Tìm mẫu thêu','Thumbnails':'Hình thu nhỏ','List':'Danh sách','New pattern':'Mẫu mới',
 'Pattern ID':'Mã mẫu','Pattern name':'Tên mẫu','Date created':'Ngày tạo','Width (cm)':'Rộng (cm)','Height (cm)':'Cao (cm)','Untitled pattern':'Mẫu chưa đặt tên',
@@ -201,31 +216,35 @@ function loc(root){if(lang!='vi')return;
  const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT),ns=[];while(w.nextNode())ns.push(w.currentNode);
  ns.forEach(n=>{if(/^(TEXTAREA|SCRIPT|STYLE)$/.test(n.parentNode.nodeName))return;const s=n.nodeValue,c=s.trim();if(!c)return;const t=tr(c);if(t!==c)n.nodeValue=s.replace(c,()=>t)});
  root.querySelectorAll('[placeholder],[aria-label]').forEach(e=>['placeholder','aria-label'].forEach(a=>{const v=e.getAttribute(a);if(v){const t=tr(v);if(t!==v)e.setAttribute(a,t)}}))}
-function applyHead(){$('#ttl').textContent=lang=='vi'?'Hệ thống quản lý thêu':'Embroidery Management System';document.title=$('#ttl').textContent;document.documentElement.lang=lang;$('#lang').value=lang}
+function applyHead(){$('#ttl').textContent=lang=='vi'?'Hệ thống quản lý thêu':'Embroidery Management System';document.title=$('#ttl').textContent;document.documentElement.lang=lang;$('#lang').value=lang;const mo=$('#mode');mo.style.display=!CLOUD&&PUB&&OWN?'':'none';mo.options[0].text=lang=='vi'?'Dữ liệu đã công bố (chỉ xem)':'Published data (read-only)';mo.options[1].text=lang=='vi'?'Dữ liệu của tôi (có thể sửa)':'My editable data';mo.value=ro?'pub':'local';const au=$('#auth'),v=lang=='vi';au.style.display=CLOUD?'':'none';au.textContent=SESS?(v?'Đăng xuất':'Sign out'):(v?'Đăng nhập':'Sign in');au.title=SESS&&SESS.user?SESS.user.email:'';$('#sync').textContent=CLOUD?(SYNC?(v?{saving:'Đang lưu…',saved:'Đã lưu trực tuyến'}:{saving:'Saving…',saved:'Saved online'})[SYNC]:(ro?(v?'Chỉ xem':'View only'):(v?'Có thể sửa':'Can edit'))):''}
 function r(){const id=document.activeElement&&document.activeElement.id;
  $('#nav').innerHTML=T.map(([k,l])=>`<button data-a="tab" data-k="${k}" class="${tab==k?'on':''}">${l}</button>`).join('');
  $('#app').innerHTML=({patterns:()=>sel&&P()?patV():listV(),colors:colV,convert:cvV,prices:prV,data:dtV})[tab]();
- loc($('#nav'));loc($('#app'));applyHead();
+ loc($('#nav'));loc($('#app'));
+ if(CLOUD)document.querySelectorAll('#app [data-a=pubzip]').forEach(e=>e.closest('.card').remove());
+ if(ro){document.querySelectorAll('#app [data-a]').forEach(e=>{if(!OKA.has(e.dataset.a))e.remove()});document.querySelectorAll('#app .edit,#app [data-c=conv],#app [data-c=rest]').forEach(e=>e.remove());document.querySelectorAll('#app [data-c]').forEach(e=>{if(!['cf','cv','cvt'].includes(e.dataset.c))e.disabled=true})}
+ applyHead();
  if(id){const e=document.getElementById(id);if(e){e.focus();try{e.setSelectionRange(1e4,1e4)}catch(x){}}}
  document.querySelectorAll('[data-f]').forEach(async el=>{const id=el.dataset.f;
-  if(el.tagName=='IMG'){let t=await fget('th'+id).catch(()=>null);
-   if(!t){const b=await fget(id).catch(()=>null);if(!b)return;try{t=await thumb(b);fput('th'+id,t).catch(()=>{})}catch(x){el.src=URL.createObjectURL(b);return}}
+  if(el.tagName=='IMG'){let t=await fget('th:'+id).catch(()=>null);
+   if(!t){const b=await fget(id).catch(()=>null);if(!b)return;try{t=await thumb(b);fput('th:'+id,t).catch(()=>{})}catch(x){el.src=URL.createObjectURL(b);return}}
    el.src=t}
+  else if(ro||CLOUD){const a=findAtt(id);if(a&&a.url)el.href=a.url}
   else{const b=await fget(id).catch(()=>null);if(b)el.href=URL.createObjectURL(b)}})}
 const sumRows=()=>{const o=[['Pattern ID','Pattern','Recipe','Thread cost (VND)','Labor cost (VND)','Total (VND)']];S.patterns.forEach(p=>p.recipes.forEach(x=>o.push([p.id,p.name,rn(x),Math.round(rcost(x)),Math.round(lab(p)),Math.round(rcost(x)+lab(p))])));return o};
 const act={
  tab:d=>{tab=d.k;r();scrollTo(0,0)},back:()=>{sel=null;stage=null;r()},pview:d=>{F.pv=d.k;r()},print:()=>print(),
- newp:()=>{S.n++;const p={id:'P-'+String(S.n).padStart(4,'0'),name:'',desc:'',w:'',h:'',created:today(),updated:today(),labor:{},recipes:[],atts:[]};S.patterns.unshift(p);sel=p.id;save();r()},
- copyp:async()=>{const p=P(),n=JSON.parse(JSON.stringify(p));S.n++;n.id='P-'+String(S.n).padStart(4,'0');n.name=p.name?p.name+' (copy)':'';n.created=n.updated=today();n.recipes.forEach(x=>x.id=uid());
-  const keep=[];for(const a of n.atts){const old=a.id,b=await fget(old).catch(()=>null);if(!b)continue;a.id=uid();try{await fput(a.id,b);keep.push(a)}catch(x){}}
+ newp:async()=>{await nextN();const p={id:'P-'+String(S.n).padStart(4,'0'),name:'',desc:'',w:'',h:'',created:today(),updated:today(),labor:{},recipes:[],atts:[]};S.patterns.unshift(p);sel=p.id;save();r()},
+ copyp:async()=>{const p=P(),n=JSON.parse(JSON.stringify(p));await nextN();n.id='P-'+String(S.n).padStart(4,'0');n.name=p.name?p.name+' (copy)':'';n.created=n.updated=today();n.recipes.forEach(x=>x.id=uid());
+  const keep=[];for(const a of n.atts){const old=a.id,b=await fget(old).catch(()=>null);if(!b)continue;a.id=uid();try{if(CLOUD)await attachBlob(a,b,a.name);else await fput(a.id,b);keep.push(a)}catch(x){}}
   n.atts=keep;S.patterns.unshift(n);sel=n.id;stage=null;save();r();scrollTo(0,0)},
- delp:async()=>{const p=P();if(!await ask('Delete '+(p.name||p.id)+' with its recipes and attachments? This cannot be undone.'))return;for(const a of p.atts){await fdel(a.id);fdel('th'+a.id)}S.patterns=S.patterns.filter(x=>x.id!=p.id);sel=null;save();r()},
+ delp:async()=>{const p=P();if(!await ask('Delete '+(p.name||p.id)+' with its recipes and attachments? This cannot be undone.'))return;for(const a of p.atts){await fdel(a.id);fdel('th:'+a.id);if(CLOUD){delFile(a.path);delFile(a.tpath)}}S.patterns=S.patterns.filter(x=>x.id!=p.id);sel=null;save();r()},
  stgopen:()=>{stage={id:null,cat:AC[0],desc:'',name:'',file:null,primary:!P().atts.some(a=>a.primary)};r()},
  stged:d=>{const a=P().atts.find(x=>x.id==d.id);stage={id:a.id,cat:a.cat,desc:a.desc,name:a.name,file:null,primary:!!a.primary};r()},
  stgx:()=>{stage=null;r()},
  stgclear:()=>{stage.file=null;r()},
  stgsave:async()=>{if(!stage)return;const p=P(),st=stage;let a=st.id?p.atts.find(x=>x.id==st.id):null;if(!a&&!st.file)return;
-  try{if(st.file){const id=a?a.id:uid(),f=st.file,type=f.type||(/pdf$/i.test(f.name)?'application/pdf':'image/bmp');await fput(id,f);if(!a){a={id,date:today()};p.atts.push(a)}a.type=type;fdel('th'+a.id);if(!st.name)st.name=f.name}}catch(x){return say('The file could not be saved. Your browser may be blocking file storage.')}
+  try{if(st.file){const id=a?a.id:uid(),f=st.file,type=f.type||(/pdf$/i.test(f.name)?'application/pdf':'image/bmp'),fresh=!a,oldp=a&&a.path;if(fresh)a={id,date:today()};a.type=type;if(CLOUD){await attachBlob(a,f,f.name);if(oldp&&oldp!=a.path)delFile(oldp)}else{await fput(id,f);fdel('th:'+a.id)}if(fresh)p.atts.push(a);if(!st.name)st.name=f.name}}catch(x){return say('The file could not be saved. Your browser may be blocking file storage.')}
   a.name=st.name||a.name;a.cat=st.cat;a.desc=st.desc;
   if(st.primary&&/^image/.test(a.type))p.atts.forEach(x=>x.primary=x.id==a.id);else{a.primary=false;if(!p.atts.some(x=>x.primary)){const im=p.atts.find(x=>x!==a&&/^image/.test(x.type));if(im)im.primary=true}}
   stage=null;p.updated=today();save();r()},
@@ -236,7 +255,7 @@ const act={
  addln:d=>{const x=R(P(),d.r),l=x.lines[x.lines.length-1]||{};x.lines.push({brand:l.brand||'DMC',cat:l.cat||CATS[0],code:'',qty:''});save();r()},
  delln:d=>{R(P(),d.r).lines.splice(+d.i,1);save();r()},
  prim:d=>{const p=P();p.atts.forEach(a=>a.primary=a.id==d.id);save();r()},
- delatt:async d=>{if(await ask('Remove this attachment?')){const p=P();p.atts=p.atts.filter(a=>a.id!=d.id);await fdel(d.id);fdel('th'+d.id);save();r()}},
+ delatt:async d=>{if(await ask('Remove this attachment?')){const p=P(),a0=p.atts.find(a=>a.id==d.id);p.atts=p.atts.filter(a=>a.id!=d.id);await fdel(d.id);fdel('th:'+d.id);if(CLOUD&&a0){delFile(a0.path);delFile(a0.tpath)}save();r()}},
  expcost:()=>dl('pattern-cost-summary.csv',toCSV(sumRows())),
  expall:()=>{const o=[['Pattern ID','Pattern','Recipe','Brand','Category','Code','Skeins','Price/skein','Line cost']];S.patterns.forEach(p=>p.recipes.forEach(x=>x.lines.forEach(l=>o.push([p.id,p.name,rn(x),l.brand,l.cat,l.code,l.qty,price(l.brand,l.cat),Math.round(lc(l))]))));dl('patterns-recipes.csv',toCSV(o))},
  expcolors:()=>dl('color-catalog.csv',toCSV([HC.split(',')].concat(S.colors.map(c=>[c.brand,c.cat,c.code,c.name,c.hex,c.coll,c.status,c.src])))),
@@ -258,11 +277,76 @@ const act={
   S.maps.push({id:uid(),sb:a.brand,sc:a.cat,scode:a.code,tb:b.brand,tc:b.cat,tcode:b.code,type:v(7),rank:v(8),notes:v(9),src:'Manual'});save();r()},
  addprice:()=>{const p=+$('#pp').value;if(!(p>0))return say('Enter a price above 0.');S.prices.push({id:uid(),brand:$('#pb').value,type:$('#pt').value,price:p,date:$('#pd').value||today(),upd:today()});save();r()},
  wipe:async()=>{if(!await ask('Delete ALL patterns, colors, mappings, prices and attachments in this browser? This cannot be undone.'))return;(await idb).close();localStorage.removeItem(K);indexedDB.deleteDatabase('ems-files').onsuccess=()=>location.reload()},
+ auth:()=>SESS?signOut():signIn(),
+ uplocal:async()=>{const L=LOCAL;if(!L||!(L.patterns.length||L.colors.length||L.maps.length||L.prices.length))return say('No data found in this browser to upload.');if(!await ask('Replace ALL online data with the data stored in this browser?'))return;
+  const d=JSON.parse(JSON.stringify(L,(k,v)=>k=='th'||k=='url'||k=='turl'?undefined:v));
+  try{for(const p of d.patterns){for(const a of p.atts||[]){const b=await idbGet(a.id).catch(()=>null);if(b)await attachBlob(a,b,a.name)}p.atts=(p.atts||[]).filter(a=>a.path)}}catch(x){return say('The file could not be saved. Your browser may be blocking file storage.')}
+  S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d);save();r()},
+ pubzip:async()=>{
+  try{if(!window.JSZip)await new Promise((ok,no)=>{const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';sc.onload=ok;sc.onerror=no;document.head.appendChild(sc)})}catch(x){return say('Could not load the ZIP library. Check your internet connection and try again.')}
+  const z=new JSZip(),d=JSON.parse(JSON.stringify(S,(k,v)=>k=='th'?undefined:v));let bad=0;
+  for(const p of d.patterns){for(const a of p.atts){const b=await fget(a.id).catch(()=>null);if(!b){bad++;continue}
+   if(/^image/.test(a.type)){try{z.file('files/'+a.id+'.jpg',await shrink(b,1600,.85));z.file('files/'+a.id+'.th.jpg',await shrink(b,240,.75));a.url='files/'+a.id+'.jpg';a.turl='files/'+a.id+'.th.jpg';a.type='image/jpeg';a.name=a.name.replace(/\.[^.]+$/,'')+'.jpg'}catch(x){bad++}}
+   else{const ext=(a.name.match(/\.[a-z0-9]+$/i)||['.pdf'])[0].toLowerCase();z.file('files/'+a.id+ext,b);a.url='files/'+a.id+ext}}
+   p.atts=p.atts.filter(a=>a.url)}
+  z.file('data.json',JSON.stringify(d));dl('ems-publish.zip',await z.generateAsync({type:'blob'}),'application/zip');
+  if(bad)say('Some attachments could not be added to the package and were left out.')},
+ loadpub:async()=>{if(!PUB||!await ask('Replace your editable data with the published data?'))return;const d=JSON.parse(JSON.stringify(PUB));
+  for(const p of d.patterns)for(const a of p.atts){try{const x=await fetch(a.url);if(x.ok)await fput(a.id,await x.blob())}catch(e){}delete a.url;delete a.turl}
+  S=LOCAL=d;save();r()},
  bk:async()=>{const b2d=b=>new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;fr.onload=()=>res(fr.result);fr.readAsDataURL(b)}),_files={};
   for(const p of S.patterns)for(const a of p.atts){const b=await fget(a.id).catch(()=>null);if(b)_files[a.id]={type:b.type||a.type,data:await b2d(b)}}
   dl('ems-backup-'+today()+'.json',JSON.stringify({...S,_files}),'application/json')}
 };
+/* ---- shared online database (Supabase REST, no library needed) ---- */
+const CFG={url:'https://nathdlwsggpwbnkcplhn.supabase.co',key:'sb_publishable_rrP6z03F4qyMQ1LPkx6n4w_UrJThLdc'};
+let SESS=null,ISED=false,SNAP=new Map(),SIG='',dirty=false,busy=false,timer=null,SYNC='';
+const pubUrl=p=>CFG.url+'/storage/v1/object/public/attachments/'+p,ext=n=>(String(n).match(/\.[a-z0-9]+$/i)||[''])[0].toLowerCase();
+async function ensureSess(){if(!SESS||SESS.expires_at*1000>Date.now()+60000)return;
+ try{const x=await fetch(CFG.url+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:CFG.key,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:SESS.refresh_token})});if(!x.ok)throw 0;const j=await x.json();SESS={access_token:j.access_token,refresh_token:j.refresh_token,expires_at:j.expires_at||Math.floor(Date.now()/1000)+j.expires_in,user:j.user||SESS.user};localStorage['ems-sess']=JSON.stringify(SESS)}
+ catch(e){SESS=null;try{localStorage.removeItem('ems-sess')}catch(x){}}}
+async function api(path,o={}){await ensureSess();const h={apikey:CFG.key,...(SESS?{Authorization:'Bearer '+SESS.access_token}:{}),...(o.headers||{})},x=await fetch(CFG.url+path,{...o,headers:h});if(!x.ok){const t=await x.text().catch(()=>'');throw new Error(x.status+' '+t.slice(0,160))}return x}
+const js=d=>JSON.stringify(d,(k,v)=>k=='th'||k=='url'||k=='turl'?undefined:v);
+function docsOf(s){const m=new Map(),a=(k,id,d)=>m.set(k+'|'+id,js(d));s.patterns.forEach(p=>a('pattern',p.id,p));s.colors.forEach(c=>a('color',c.id,c));s.maps.forEach(c=>a('map',c.id,c));s.prices.forEach(c=>a('price',c.id,c));a('setting','main',{n:s.n,rate:s.rate});return m}
+function fromRows(rows){const s={n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]};
+ for(const{kind,id,data}of rows){if(kind=='pattern')s.patterns.push(data);else if(kind=='color')s.colors.push(data);else if(kind=='map')s.maps.push(data);else if(kind=='price')s.prices.push(data);else if(kind=='setting'&&id=='main'){s.n=data.n||0;s.rate=data.rate||0}}
+ s.patterns.sort((a,b)=>b.id.localeCompare(a.id));s.patterns.forEach(p=>{p.atts=p.atts||[];p.recipes=p.recipes||[];p.labor=p.labor||{};p.atts.forEach(a=>{if(a.path)a.url=pubUrl(a.path);if(a.tpath)a.turl=pubUrl(a.tpath)})});return s}
+async function pull(){const rows=[];for(let o=0;;o+=1000){const b=await(await api('/rest/v1/ems_docs?select=kind,id,data&order=kind,id&limit=1000&offset='+o)).json();rows.push(...b);if(b.length<1000)break}return rows}
+async function getSig(){const x=await api('/rest/v1/ems_docs?select=updated_at&order=updated_at.desc&limit=1',{headers:{Prefer:'count=exact'}}),b=await x.json();return(b[0]?b[0].updated_at:'')+'|'+((x.headers.get('content-range')||'').split('/')[1]||'')}
+async function cloudLoad(){S=fromRows(await pull());SNAP=docsOf(S);SYNC='';try{SIG=await getSig()}catch(e){}}
+async function setRole(){ISED=false;if(SESS){try{ISED=(await(await api('/rest/v1/rpc/is_editor',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json())===true}catch(e){}}ro=!ISED}
+async function cloudInit(){try{SESS=JSON.parse(localStorage['ems-sess']||'null')}catch(e){SESS=null}await ensureSess();await cloudLoad();await setRole()}
+function sched(){dirty=true;clearTimeout(timer);timer=setTimeout(flush,700)}
+async function flush(){if(busy){sched();return}busy=true;SYNC='saving';applyHead();
+ try{const cur=docsOf(S),ups=[],gone={};
+  cur.forEach((v,k)=>{if(SNAP.get(k)!==v){const i=k.indexOf('|');ups.push({kind:k.slice(0,i),id:k.slice(i+1),data:JSON.parse(v),updated_at:new Date().toISOString()})}});
+  SNAP.forEach((v,k)=>{if(!cur.has(k)){const i=k.indexOf('|'),kd=k.slice(0,i);(gone[kd]=gone[kd]||[]).push(k.slice(i+1))}});
+  for(let i=0;i<ups.length;i+=300)await api('/rest/v1/ems_docs',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(ups.slice(i,i+300))});
+  for(const kd in gone)for(let i=0;i<gone[kd].length;i+=80)await api('/rest/v1/ems_docs?kind=eq.'+kd+'&id=in.('+gone[kd].slice(i,i+80).join(',')+')',{method:'DELETE'});
+  SNAP=cur;dirty=false;SYNC='saved';try{SIG=await getSig()}catch(e){}applyHead()}
+ catch(e){console.error(e);dirty=false;busy=false;SYNC='';say('Could not save to the online database. Your last change was not saved. Check your connection and that your account is on the editors list.');try{await cloudLoad();r()}catch(x){}return}
+ busy=false}
+async function poll(){if(!CLOUD||busy||dirty)return;const a=document.activeElement;if(stage||(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))return;try{const g=await getSig();if(g!==SIG){await cloudLoad();r()}}catch(e){}}
+async function nextN(){if(CLOUD){try{const b=await(await api('/rest/v1/ems_docs?kind=eq.pattern&select=id&order=id.desc&limit=1')).json();S.n=Math.max(S.n,b[0]?+b[0].id.slice(2)||0:0)}catch(e){}}return++S.n}
+async function upFile(path,blob,type){await api('/storage/v1/object/attachments/'+path,{method:'POST',headers:{'Content-Type':type||blob.type||'application/octet-stream','x-upsert':'true'},body:blob})}
+async function delFile(path){if(path)try{await api('/storage/v1/object/attachments/'+path,{method:'DELETE'})}catch(e){}}
+async function attachBlob(a,blob,fname){a.path=a.id+(ext(fname)||'.bin');await upFile(a.path,blob,a.type);delete a.tpath;delete a.turl;
+ if(/^image/.test(a.type)){try{await upFile(a.id+'.th.jpg',await shrink(blob,240,.75),'image/jpeg');a.tpath=a.id+'.th.jpg'}catch(x){}}
+ a.url=pubUrl(a.path);if(a.tpath)a.turl=pubUrl(a.tpath)}
+function signIn(){const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center;z-index:99;padding:16px';
+ d.innerHTML='<form class="card" style="max-width:380px;width:100%;margin:0"><h3>Sign in to edit</h3><label>Email<input id="lgE" type="email" required autocomplete="username"></label><label style="margin-top:8px">Password<input id="lgP" type="password" required autocomplete="current-password"></label><p id="lgM" class="bad"></p><div class="row" style="justify-content:flex-end;margin:0"><button type="button" id="lgC">Cancel</button><button class="p" type="submit">Sign in</button></div></form>';
+ document.body.appendChild(d);loc(d);d.querySelector('#lgC').onclick=()=>d.remove();d.querySelector('#lgE').focus();
+ d.querySelector('form').onsubmit=async ev=>{ev.preventDefault();const m=d.querySelector('#lgM');m.textContent='';
+  try{const x=await fetch(CFG.url+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:CFG.key,'Content-Type':'application/json'},body:JSON.stringify({email:d.querySelector('#lgE').value.trim(),password:d.querySelector('#lgP').value})});
+   if(!x.ok){m.textContent=tr('Wrong email or password.');return}
+   const j=await x.json();SESS={access_token:j.access_token,refresh_token:j.refresh_token,expires_at:j.expires_at||Math.floor(Date.now()/1000)+j.expires_in,user:j.user};try{localStorage['ems-sess']=JSON.stringify(SESS)}catch(e){}
+   d.remove();await setRole();await cloudLoad();r();if(!ISED)say('You are signed in, but this account is not on the editors list. You can view the data but not change it.')}
+  catch(e){m.textContent=tr('Could not reach the online database. Try again.')}}}
+function signOut(){const t=SESS&&SESS.access_token;SESS=null;ISED=false;ro=true;try{localStorage.removeItem('ems-sess')}catch(e){}if(t)fetch(CFG.url+'/auth/v1/logout',{method:'POST',headers:{apikey:CFG.key,Authorization:'Bearer '+t}}).catch(()=>{});sel=null;stage=null;r()}
+function setMode(m){if(!ro)LOCAL=S;ro=m=='pub'&&!!PUB;S=ro?PUB:LOCAL;sel=null;stage=null;pend=null;try{localStorage['ems-mode']=ro?'pub':'local'}catch(e){}}
+const shrink=(b,max,q)=>new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;fr.onload=()=>{const im=new Image();im.onerror=rej;im.onload=()=>{const k=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.width*k));c.height=Math.max(1,Math.round(im.height*k));const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);c.toBlob(o=>o?res(o):rej(),'image/jpeg',q)};im.src=fr.result};fr.readAsDataURL(b)});
 const ch={
+ mode:e=>{setMode(e.value);r()},
  lang:e=>{lang=e.value;try{localStorage['ems-lang']=lang}catch(x){}r()},
  ps:e=>{F.ps=e.value;r()},cf:e=>{F[e.dataset.k]=e.value;r()},rate:e=>{S.rate=+e.value||0;save()},
  pf:e=>{const p=P();p[e.dataset.k]=e.value;p.updated=today();save();},
@@ -284,11 +368,15 @@ const ch={
  cv:e=>{CV[e.dataset.k]=e.value;if(e.dataset.k=='sb')CV.tb=CV.tb.filter(b=>b!=e.value);CV.go=0;r()},
  cvt:e=>{CV.tb=e.checked?[...CV.tb,e.value]:CV.tb.filter(b=>b!=e.value);CV.go=0},
  rest:async e=>{try{const d=JSON.parse(await e.files[0].text());if(!Array.isArray(d.patterns))throw 0;if(await ask('Replace all current data with this backup?')){const fl=d._files||{};delete d._files;d.patterns.forEach(p=>(p.atts||[]).forEach(a=>delete a.th));
-   for(const id in fl){const o=fl[id],u=atob(o.data.split(',')[1]),n=new Uint8Array(u.length);for(let i=0;i<u.length;i++)n[i]=u.charCodeAt(i);await fput(id,new Blob([n],{type:o.type}))}
+   for(const id in fl){const o=fl[id],u=atob(o.data.split(',')[1]),n=new Uint8Array(u.length);for(let i=0;i<u.length;i++)n[i]=u.charCodeAt(i);const bl=new Blob([n],{type:o.type});if(CLOUD){const a=d.patterns.flatMap(p=>p.atts||[]).find(x=>x.id==id);if(a)await attachBlob(a,bl,a.name)}else await fput(id,bl)}
+   if(CLOUD)d.patterns.forEach(p=>p.atts=(p.atts||[]).filter(a=>a.path));
    S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d);save();sel=null;r()}}catch(x){say('That file is not a valid EMS backup.')}}
 };
-document.addEventListener('click',e=>{const a=e.target.closest('[data-a]');if(a&&act[a.dataset.a])act[a.dataset.a](a.dataset,a)});
-document.addEventListener('change',e=>{const c=e.target.dataset&&e.target.dataset.c;if(c&&ch[c])ch[c](e.target)});
+document.addEventListener('click',e=>{const a=e.target.closest('[data-a]');if(a&&ro&&!OKA.has(a.dataset.a))return;if(a&&act[a.dataset.a])act[a.dataset.a](a.dataset,a)});
+document.addEventListener('change',e=>{const c=e.target.dataset&&e.target.dataset.c;if(c&&ro&&!['cf','cv','cvt','lang','mode'].includes(c))return;if(c&&ch[c])ch[c](e.target)});
 document.addEventListener('input',e=>{const l=e.target.dataset&&e.target.dataset.live;if(l){F[l]=e.target.value;r()}});
-r();
+(async()=>{if(CLOUD){try{await cloudInit()}catch(e){console.error(e);CLOUD=false;ro=false;S=LOCAL;say('Could not connect to the online database, so the data stored in this browser is shown instead.')}}
+ if(!CLOUD){try{const x=await fetch('data.json',{cache:'no-cache'});if(x.ok){const d=await x.json();if(d&&Array.isArray(d.patterns)){delete d._files;PUB=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d)}}}catch(e){}
+  let m='local';if(PUB){try{m=localStorage['ems-mode']||'pub'}catch(e){m='pub'}if(!OWN)m='pub'}setMode(m)}
+ r();if(CLOUD){setInterval(poll,20000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()})}})();
 </script></body></html>
