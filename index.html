@@ -6,7 +6,7 @@
 :root{--ink:#1f2a37;--mut:#5d6b7a;--bg:#f4f6f7;--card:#fff;--line:#d9e0e4;--ac:#1f5f5b;--tint:#e1efed;--bad:#b3261e}
 *{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg)}
 header{background:var(--ac);color:#fff;padding:10px 16px;position:sticky;top:0;z-index:5}
-header b{font-size:17px}nav{display:flex;gap:4px;overflow-x:auto;margin-top:6px}
+header b{font-size:17px}.top{display:flex;justify-content:space-between;align-items:center;gap:8px}header select{background:#fff;color:var(--ink);padding:3px 6px}nav{display:flex;gap:4px;overflow-x:auto;margin-top:6px}
 nav button{background:none;border:0;color:#cfe5e2;padding:6px 12px;border-radius:6px;white-space:nowrap}
 nav button.on{background:#fff;color:var(--ac);font-weight:600}
 main{max-width:1000px;margin:0 auto;padding:16px}
@@ -28,7 +28,7 @@ input:focus::placeholder,textarea:focus::placeholder{color:transparent}
 .note{background:#fff7dd;border:1px solid #ecd78a;border-radius:6px;padding:8px;margin-bottom:8px}
 @media print{header,button,.noprint,input[type=file]{display:none!important}body{background:#fff}.card{border:0}}
 </style></head><body>
-<header><b>Embroidery Management System</b><nav id="nav"></nav></header>
+<header><div class="top"><b id="ttl">Embroidery Management System</b><select id="lang" data-c="lang" aria-label="Language"><option value="en">English</option><option value="vi">Tiếng Việt</option></select></div><nav id="nav"></nav></header>
 <main id="app"></main>
 <script>
 const BR=['DMC','Cosmo','Olympus','Anchor','Madeira','Au Ver à Soie','Gütermann','Au Chinois','Airo'];
@@ -41,7 +41,7 @@ const vnd=n=>new Intl.NumberFormat('vi-VN').format(Math.round(n||0))+' ₫';
 /* in-page dialogs: native alert/confirm/prompt are silently blocked in sandboxed previews */
 function dlg(msg,kind,val){return new Promise(res=>{const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center;z-index:99;padding:16px';
  d.innerHTML=`<div class="card" role="dialog" aria-modal="true" style="max-width:420px;width:100%;margin:0"><p style="margin-top:0">${esc(msg)}</p>${kind=='text'?'<input id="dlgi" style="width:100%;margin-bottom:10px">':''}<div class="row" style="justify-content:flex-end;margin:0">${kind=='say'?'':'<button id="dlgc">Cancel</button>'}<button class="p" id="dlgo">OK</button></div></div>`;
- document.body.appendChild(d);const i=d.querySelector('#dlgi');if(i)i.value=val||'';const done=v=>{d.remove();res(v)};
+ document.body.appendChild(d);loc(d);const i=d.querySelector('#dlgi');if(i)i.value=val||'';const done=v=>{d.remove();res(v)};
  d.querySelector('#dlgo').onclick=()=>done(kind=='text'?i.value:true);const c=d.querySelector('#dlgc');if(c)c.onclick=()=>done(kind=='text'?null:false);(i||d.querySelector('#dlgo')).focus()})}
 const ask=m=>dlg(m,'ask'),say=m=>dlg(m,'say'),askText=(m,v)=>dlg(m,'text',v);
 const opts=(a,v)=>a.map(x=>`<option${x==v?' selected':''}>${esc(x)}</option>`).join('');
@@ -125,9 +125,87 @@ const dtV=()=>`<div class="card"><h2>Backup and export</h2><p class="m">Data is 
 /* small JPEG thumbnails are kept as data URLs so photos show even where blob URLs are blocked */
 const findAtt=id=>{for(const p of S.patterns){const a=p.atts.find(x=>x.id==id);if(a)return a}};
 const thumb=b=>new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;fr.onload=()=>{const im=new Image();im.onerror=rej;im.onload=()=>{const k=Math.min(1,240/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.width*k));c.height=Math.max(1,Math.round(im.height*k));const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.75))};im.src=fr.result};fr.readAsDataURL(b)});
+/* language: Vietnamese labels are applied to the rendered page; stored values and your data stay unchanged */
+let lang='en';try{lang=localStorage['ems-lang']||'en'}catch(e){}
+const VI=new Map(Object.entries({
+'Patterns':'Mẫu thêu','Colors':'Màu chỉ','Convert':'Quy đổi màu','Prices & labor':'Giá & nhân công','Backup':'Sao lưu',
+'Search patterns':'Tìm mẫu thêu','Thumbnails':'Hình thu nhỏ','List':'Danh sách','New pattern':'Mẫu mới',
+'Pattern ID':'Mã mẫu','Pattern name':'Tên mẫu','Date created':'Ngày tạo','Width (cm)':'Rộng (cm)','Height (cm)':'Cao (cm)','Untitled pattern':'Mẫu chưa đặt tên',
+'No patterns here yet. Select “New pattern” to add one.':'Chưa có mẫu nào. Chọn “Mẫu mới” để thêm.',
+'Code':'Mã','No price':'Chưa có giá','Remove color':'Xóa màu',
+'Draft from conversion. Review each color, then confirm.':'Bản nháp từ quy đổi. Hãy kiểm tra từng màu rồi xác nhận.','Confirm recipe':'Xác nhận công thức',
+'Convert to…':'Quy đổi sang…','Add color':'Thêm màu','Delete':'Xóa','Brand':'Thương hiệu','Category':'Loại','Skeins':'Số con chỉ','Price/skein':'Giá/con','Cost':'Chi phí','New recipe':'Công thức mới',
+'Edit attachment':'Sửa tệp đính kèm','New attachment':'Tệp đính kèm mới','File name':'Tên tệp','Description (optional)':'Mô tả (không bắt buộc)','Remove file':'Bỏ tệp',
+'Replace file (optional): PNG, JPG, BMP or PDF':'Thay tệp (không bắt buộc): PNG, JPG, BMP hoặc PDF','File: PNG, JPG, BMP or PDF':'Tệp: PNG, JPG, BMP hoặc PDF',
+'Primary reference image':'Ảnh tham chiếu chính','Save changes':'Lưu thay đổi','Add attachment':'Thêm tệp đính kèm','Cancel':'Hủy','OK':'Đồng ý',
+'← All patterns':'← Tất cả mẫu','Print / save as PDF':'In / lưu PDF','Copy pattern':'Sao chép mẫu','Export cost summary':'Xuất tổng hợp chi phí','Delete pattern':'Xóa mẫu','Description':'Mô tả',
+'File':'Tệp','Added':'Ngày thêm','Primary':'Chính','Edit':'Sửa','Preview':'Xem trước','Download':'Tải xuống',
+'No attachments yet. Select “Add attachment” to upload the first one.':'Chưa có tệp đính kèm. Chọn “Thêm tệp đính kèm” để tải lên tệp đầu tiên.',
+'Labor (shared by all recipes)':'Nhân công (dùng chung cho mọi công thức)','Labor hours':'Số giờ công','Hourly rate (₫)':'Đơn giá theo giờ (₫)','Direct cost override (₫)':'Nhập trực tiếp chi phí nhân công (₫)','Labor cost:':'Chi phí nhân công:',
+'(hours × hourly rate; a blank rate uses the default rate, and a direct cost override replaces the calculation)':'(số giờ × đơn giá theo giờ; để trống đơn giá sẽ dùng đơn giá mặc định, và chi phí nhập trực tiếp sẽ thay cho phép tính)',
+'Thread recipes':'Công thức chỉ thêu','No recipes yet. Add one to calculate thread cost.':'Chưa có công thức. Hãy thêm một công thức để tính chi phí chỉ.','Cost comparison':'So sánh chi phí','Recipe':'Công thức','Thread':'Chỉ','Labor':'Nhân công','Total':'Tổng',
+'Import color catalog (CSV)':'Nhập bảng màu (CSV)','Import conversion mappings (CSV)':'Nhập bảng quy đổi màu (CSV)','Download template':'Tải tệp mẫu',
+'valid rows,':'dòng hợp lệ,','with errors. Nothing is saved until you confirm.':'dòng lỗi. Chưa có gì được lưu cho đến khi bạn xác nhận.','Download error report':'Tải báo cáo lỗi',
+'All brands':'Tất cả thương hiệu','All categories':'Tất cả loại','Any status':'Mọi trạng thái','Active':'Đang dùng','Discontinued':'Ngừng sản xuất','Search code or name':'Tìm theo mã hoặc tên',
+'Name':'Tên','Status':'Trạng thái','Discontinue':'Đánh dấu ngừng sản xuất','Reactivate':'Dùng lại',
+'Showing the first 150. Narrow the filters to see more.':'Đang hiển thị 150 dòng đầu. Hãy thu hẹp bộ lọc để xem thêm.',
+'The library is empty. Import a catalog CSV above or add a color below.':'Thư viện đang trống. Hãy nhập tệp CSV bảng màu ở trên hoặc thêm màu ở dưới.',
+'Add a color':'Thêm một màu','HEX (optional)':'Mã HEX (không bắt buộc)','Copy all DMC colors to Airo':'Sao chép toàn bộ màu DMC sang Airo','Export catalog CSV':'Xuất bảng màu CSV',
+'Find equivalent colors':'Tìm màu tương đương','Source color code':'Mã màu gốc','Find equivalents':'Tìm',
+'Target':'Đích','Match':'Mức khớp','Rank':'Thứ hạng','Source':'Nguồn','Not stated':'Không nêu','Exact':'Chính xác','Closest':'Gần nhất','Approximate':'Xấp xỉ',
+'Airo uses DMC codes (1-1)':'Airo dùng mã DMC (1-1)','Manual':'Nhập tay','Select at least one target brand.':'Hãy chọn ít nhất một thương hiệu đích.',
+'Source code':'Mã gốc','Target code':'Mã đích','Notes':'Ghi chú','Match type':'Loại khớp','Add mapping':'Thêm quy đổi','Export mappings CSV':'Xuất bảng quy đổi CSV',
+'Thread prices':'Giá chỉ','Price per skein (₫)':'Giá mỗi con chỉ (₫)','Add price':'Thêm giá',
+'New prices are added to the history. Costs use the latest price effective today or earlier.':'Giá mới được thêm vào lịch sử. Chi phí dùng giá mới nhất có hiệu lực từ hôm nay trở về trước.',
+'Type':'Loại chỉ','Price':'Giá','Effective':'Hiệu lực từ','Current':'Hiện hành','Default hourly labor rate':'Đơn giá nhân công mặc định theo giờ','₫ per hour':'₫ mỗi giờ',
+'Backup and export':'Sao lưu và xuất dữ liệu',
+'Data is stored in this browser only. Export a backup regularly. The JSON backup holds patterns, recipes, colors, mappings, prices and attachment files, so you can move everything to another browser or device with Restore from backup.':'Dữ liệu chỉ được lưu trong trình duyệt này. Hãy sao lưu thường xuyên. Tệp sao lưu JSON gồm mẫu thêu, công thức, màu, quy đổi, giá và các tệp đính kèm, nên bạn có thể chuyển toàn bộ sang trình duyệt hoặc thiết bị khác bằng chức năng Khôi phục từ bản sao lưu.',
+'Download JSON backup':'Tải bản sao lưu JSON','Restore from backup':'Khôi phục từ bản sao lưu','Export patterns and recipes CSV':'Xuất mẫu thêu và công thức CSV','Export cost summary CSV':'Xuất tổng hợp chi phí CSV','Export color catalog CSV':'Xuất bảng màu CSV','Delete all data in this browser':'Xóa toàn bộ dữ liệu trong trình duyệt này',
+'Stranded Cotton':'Chỉ cotton nhiều sợi','Perle Cotton':'Chỉ cotton perle','Silk Thread':'Chỉ tơ tằm','Metallic Thread':'Chỉ kim tuyến','Variation Thread':'Chỉ nhuộm chuyển màu','Wool Thread':'Chỉ len','Satin Floss':'Chỉ satin',
+'Original pattern':'Mẫu gốc','Line art':'Bản vẽ nét','Embroidered result':'Thành phẩm thêu','Detail photo':'Ảnh chi tiết','Other':'Khác',
+'Browser storage is full. Export a backup, then remove unused data.':'Bộ nhớ trình duyệt đã đầy. Hãy tải bản sao lưu rồi xóa bớt dữ liệu không dùng.',
+'Delete this recipe?':'Xóa công thức này?','Remove this attachment?':'Xóa tệp đính kèm này?','The file could not be saved. Your browser may be blocking file storage.':'Không thể lưu tệp. Trình duyệt của bạn có thể đang chặn lưu trữ tệp.',
+'Enter a color code.':'Hãy nhập mã màu.','That code already exists for this brand and category.':'Mã này đã tồn tại cho thương hiệu và loại chỉ này.',
+'This color is used by a mapping or recipe. Mark it as discontinued instead.':'Màu này đang được dùng trong một quy đổi hoặc công thức. Hãy đánh dấu ngừng sản xuất thay vì xóa.',
+'Both colors must exist in the color library. Check the brand, category and code.':'Cả hai màu phải có trong thư viện màu. Hãy kiểm tra thương hiệu, loại và mã.','Enter a price above 0.':'Hãy nhập giá lớn hơn 0.',
+'Delete ALL patterns, colors, mappings, prices and attachments in this browser? This cannot be undone.':'Xóa TOÀN BỘ mẫu thêu, màu, quy đổi, giá và tệp đính kèm trong trình duyệt này? Thao tác này không thể hoàn tác.',
+'Replace all current data with this backup?':'Thay toàn bộ dữ liệu hiện tại bằng bản sao lưu này?','That file is not a valid EMS backup.':'Tệp này không phải bản sao lưu EMS hợp lệ.',
+'Color name':'Tên màu','HEX (optional, e.g. #1a2b3c)':'Mã HEX (không bắt buộc, ví dụ #1a2b3c)','Missing color code':'Thiếu mã màu','Unknown source or target brand':'Thương hiệu gốc hoặc đích không xác định'}));
+const TY=x=>x.replace(/match type not stated/g,'chưa nêu loại khớp').replace(/Exact/g,'Chính xác').replace(/Closest/g,'Gần nhất').replace(/Approximate/g,'Xấp xỉ');
+const RX=[
+[/^Created (.+) · Updated (.+)$/,(a,b)=>`Tạo ngày ${a} · Cập nhật ${b}`],
+[/^Attachments \((\d+)\)$/,n=>`Tệp đính kèm (${n})`],
+[/^Color library \((\d+)\)$/,n=>`Thư viện màu (${n})`],
+[/^Add a mapping \((\d+) stored\)$/,n=>`Thêm quy đổi (đã lưu ${n})`],
+[/^Thread cost: (.+)$/,a=>`Chi phí chỉ: ${a}`],
+[/^(.+) \(draft\)$/,a=>`${a} (bản nháp)`],
+[/^Import (\d+) valid rows$/,n=>`Nhập ${n} dòng hợp lệ`],
+[/^Row (\d+): (.+)$/,(n,m)=>`Dòng ${n}: ${tr(m)}`],
+[/^Unknown brand "(.*)"$/,a=>`Thương hiệu không xác định "${a}"`],
+[/^Unknown category "(.*)"$/,a=>`Loại không xác định "${a}"`],
+[/^Duplicate mapping (.+)$/,a=>`Quy đổi bị trùng ${a}`],
+[/^Duplicate (.+)$/,a=>`Bị trùng ${a}`],
+[/^Source color (.+) is not in the catalog$/,a=>`Màu gốc ${a} chưa có trong bảng màu`],
+[/^Target color (.+) is not in the catalog$/,a=>`Màu đích ${a} chưa có trong bảng màu`],
+[/^No predefined mapping from (.+) to (.+) is in your database\. Pick another target brand or a different source color\.$/,(a,b)=>`Không có quy đổi sẵn nào từ ${a} sang ${b} trong cơ sở dữ liệu của bạn. Hãy chọn thương hiệu đích khác hoặc màu gốc khác.`],
+[/^(.+) maps to: (.+)$/,(a,b)=>`${a} tương ứng với: ${TY(b)}`],
+[/^No predefined mapping for (.+)\. Choose a color manually\.$/,a=>`Không có quy đổi sẵn cho ${a}. Hãy tự chọn màu.`],
+[/^Delete (.+) with its recipes and attachments\? This cannot be undone\.$/,a=>`Xóa ${a} cùng các công thức và tệp đính kèm? Thao tác này không thể hoàn tác.`],
+[/^(.+) is not supported\. Use PNG, JPG, BMP or PDF\.$/,a=>`${a} không được hỗ trợ. Hãy dùng PNG, JPG, BMP hoặc PDF.`],
+[/^(\d+) DMC colors copied to Airo\.$/,n=>`Đã sao chép ${n} màu DMC sang Airo.`],
+[/^(.+) is not in the color library for this category\. Pick a code from the list\.$/,a=>`${a} chưa có trong thư viện màu của loại này. Hãy chọn một mã từ danh sách.`],
+[/^Delete (.+)\?$/,a=>`Xóa ${a}?`]];
+function tr(s){if(lang!='vi')return s;if(VI.has(s))return VI.get(s);for(const [re,f] of RX){const m=s.match(re);if(m)return f(...m.slice(1))}return s}
+function loc(root){if(lang!='vi')return;
+ root.querySelectorAll('option:not([value])').forEach(o=>o.setAttribute('value',o.textContent));
+ const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT),ns=[];while(w.nextNode())ns.push(w.currentNode);
+ ns.forEach(n=>{if(/^(TEXTAREA|SCRIPT|STYLE)$/.test(n.parentNode.nodeName))return;const s=n.nodeValue,c=s.trim();if(!c)return;const t=tr(c);if(t!==c)n.nodeValue=s.replace(c,()=>t)});
+ root.querySelectorAll('[placeholder],[aria-label]').forEach(e=>['placeholder','aria-label'].forEach(a=>{const v=e.getAttribute(a);if(v){const t=tr(v);if(t!==v)e.setAttribute(a,t)}}))}
+function applyHead(){$('#ttl').textContent=lang=='vi'?'Hệ thống quản lý thêu':'Embroidery Management System';document.title=$('#ttl').textContent;document.documentElement.lang=lang;$('#lang').value=lang}
 function r(){const id=document.activeElement&&document.activeElement.id;
  $('#nav').innerHTML=T.map(([k,l])=>`<button data-a="tab" data-k="${k}" class="${tab==k?'on':''}">${l}</button>`).join('');
  $('#app').innerHTML=({patterns:()=>sel&&P()?patV():listV(),colors:colV,convert:cvV,prices:prV,data:dtV})[tab]();
+ loc($('#nav'));loc($('#app'));applyHead();
  if(id){const e=document.getElementById(id);if(e){e.focus();try{e.setSelectionRange(1e4,1e4)}catch(x){}}}
  document.querySelectorAll('[data-f]').forEach(async el=>{const id=el.dataset.f;
   if(el.tagName=='IMG'){let t=await fget('th'+id).catch(()=>null);
@@ -185,6 +263,7 @@ const act={
   dl('ems-backup-'+today()+'.json',JSON.stringify({...S,_files}),'application/json')}
 };
 const ch={
+ lang:e=>{lang=e.value;try{localStorage['ems-lang']=lang}catch(x){}r()},
  ps:e=>{F.ps=e.value;r()},cf:e=>{F[e.dataset.k]=e.value;r()},rate:e=>{S.rate=+e.value||0;save()},
  pf:e=>{const p=P();p[e.dataset.k]=e.value;p.updated=today();save();},
  lab:e=>{const p=P();p.labor=p.labor||{};p.labor[e.dataset.k]=e.value===''?'':+e.value;save();r()},
