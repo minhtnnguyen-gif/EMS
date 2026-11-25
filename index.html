@@ -188,6 +188,9 @@ const VI=new Map(Object.entries({
 'Color name':'Tên màu','HEX (optional, e.g. #1a2b3c)':'Mã HEX (không bắt buộc, ví dụ #1a2b3c)','Missing color code':'Thiếu mã màu','Unknown source or target brand':'Thương hiệu gốc hoặc đích không xác định'}));
 const TY=x=>x.replace(/match type not stated/g,'chưa nêu loại khớp').replace(/Exact/g,'Chính xác').replace(/Closest/g,'Gần nhất').replace(/Approximate/g,'Xấp xỉ');
 const RX=[
+[/^The file could not be saved\. Details: ([\s\S]*)$/,a=>`Không thể lưu tệp. Chi tiết: ${a}`],
+[/^Could not save to the online database\. Your last change was not saved\. Check your connection and that your account is on the editors list\. Details: ([\s\S]*)$/,a=>`Không lưu được vào cơ sở dữ liệu trực tuyến. Thay đổi gần nhất chưa được lưu. Hãy kiểm tra kết nối và xem tài khoản của bạn có trong danh sách người được sửa không. Chi tiết: ${a}`],
+[/^Could not connect to the online database, so the data stored in this browser is shown instead\. Details: ([\s\S]*)$/,a=>`Không kết nối được cơ sở dữ liệu trực tuyến nên đang hiển thị dữ liệu lưu trong trình duyệt này. Chi tiết: ${a}`],
 [/^Created (.+) · Updated (.+)$/,(a,b)=>`Tạo ngày ${a} · Cập nhật ${b}`],
 [/^Attachments \((\d+)\)$/,n=>`Tệp đính kèm (${n})`],
 [/^Color library \((\d+)\)$/,n=>`Thư viện màu (${n})`],
@@ -244,7 +247,7 @@ const act={
  stgx:()=>{stage=null;r()},
  stgclear:()=>{stage.file=null;r()},
  stgsave:async()=>{if(!stage)return;const p=P(),st=stage;let a=st.id?p.atts.find(x=>x.id==st.id):null;if(!a&&!st.file)return;
-  try{if(st.file){const id=a?a.id:uid(),f=st.file,type=f.type||(/pdf$/i.test(f.name)?'application/pdf':'image/bmp'),fresh=!a,oldp=a&&a.path;if(fresh)a={id,date:today()};a.type=type;if(CLOUD){await attachBlob(a,f,f.name);if(oldp&&oldp!=a.path)delFile(oldp)}else{await fput(id,f);fdel('th:'+a.id)}if(fresh)p.atts.push(a);if(!st.name)st.name=f.name}}catch(x){return say('The file could not be saved. Your browser may be blocking file storage.')}
+  try{if(st.file){const id=a?a.id:uid(),f=st.file,type=f.type||(/pdf$/i.test(f.name)?'application/pdf':'image/bmp'),fresh=!a,oldp=a&&a.path;if(fresh)a={id,date:today()};a.type=type;if(CLOUD){await attachBlob(a,f,f.name);if(oldp&&oldp!=a.path)delFile(oldp)}else{await fput(id,f);fdel('th:'+a.id)}if(fresh)p.atts.push(a);if(!st.name)st.name=f.name}}catch(x){return say('The file could not be saved. Details: '+(x&&x.message||x))}
   a.name=st.name||a.name;a.cat=st.cat;a.desc=st.desc;
   if(st.primary&&/^image/.test(a.type))p.atts.forEach(x=>x.primary=x.id==a.id);else{a.primary=false;if(!p.atts.some(x=>x.primary)){const im=p.atts.find(x=>x!==a&&/^image/.test(x.type));if(im)im.primary=true}}
   stage=null;p.updated=today();save();r()},
@@ -280,7 +283,7 @@ const act={
  auth:()=>SESS?signOut():signIn(),
  uplocal:async()=>{const L=LOCAL;if(!L||!(L.patterns.length||L.colors.length||L.maps.length||L.prices.length))return say('No data found in this browser to upload.');if(!await ask('Replace ALL online data with the data stored in this browser?'))return;
   const d=JSON.parse(JSON.stringify(L,(k,v)=>k=='th'||k=='url'||k=='turl'?undefined:v));
-  try{for(const p of d.patterns){for(const a of p.atts||[]){const b=await idbGet(a.id).catch(()=>null);if(b)await attachBlob(a,b,a.name)}p.atts=(p.atts||[]).filter(a=>a.path)}}catch(x){return say('The file could not be saved. Your browser may be blocking file storage.')}
+  try{for(const p of d.patterns){for(const a of p.atts||[]){const b=await idbGet(a.id).catch(()=>null);if(b)await attachBlob(a,b,a.name)}p.atts=(p.atts||[]).filter(a=>a.path)}}catch(x){return say('The file could not be saved. Details: '+(x&&x.message||x))}
   S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d);save();r()},
  pubzip:async()=>{
   try{if(!window.JSZip)await new Promise((ok,no)=>{const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';sc.onload=ok;sc.onerror=no;document.head.appendChild(sc)})}catch(x){return say('Could not load the ZIP library. Check your internet connection and try again.')}
@@ -324,7 +327,7 @@ async function flush(){if(busy){sched();return}busy=true;SYNC='saving';applyHead
   for(let i=0;i<ups.length;i+=300)await api('/rest/v1/ems_docs',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(ups.slice(i,i+300))});
   for(const kd in gone)for(let i=0;i<gone[kd].length;i+=80)await api('/rest/v1/ems_docs?kind=eq.'+kd+'&id=in.('+gone[kd].slice(i,i+80).join(',')+')',{method:'DELETE'});
   SNAP=cur;dirty=false;SYNC='saved';try{SIG=await getSig()}catch(e){}applyHead()}
- catch(e){console.error(e);dirty=false;busy=false;SYNC='';say('Could not save to the online database. Your last change was not saved. Check your connection and that your account is on the editors list.');try{await cloudLoad();r()}catch(x){}return}
+ catch(e){console.error(e);dirty=false;busy=false;SYNC='';say('Could not save to the online database. Your last change was not saved. Check your connection and that your account is on the editors list. Details: '+(e&&e.message||e));try{await cloudLoad();r()}catch(x){}return}
  busy=false}
 async function poll(){if(!CLOUD||busy||dirty)return;const a=document.activeElement;if(stage||(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))return;try{const g=await getSig();if(g!==SIG){await cloudLoad();r()}}catch(e){}}
 async function nextN(){if(CLOUD){try{const b=await(await api('/rest/v1/ems_docs?kind=eq.pattern&select=id&order=id.desc&limit=1')).json();S.n=Math.max(S.n,b[0]?+b[0].id.slice(2)||0:0)}catch(e){}}return++S.n}
@@ -338,10 +341,10 @@ function signIn(){const d=document.createElement('div');d.style.cssText='positio
  document.body.appendChild(d);loc(d);d.querySelector('#lgC').onclick=()=>d.remove();d.querySelector('#lgE').focus();
  d.querySelector('form').onsubmit=async ev=>{ev.preventDefault();const m=d.querySelector('#lgM');m.textContent='';
   try{const x=await fetch(CFG.url+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:CFG.key,'Content-Type':'application/json'},body:JSON.stringify({email:d.querySelector('#lgE').value.trim(),password:d.querySelector('#lgP').value})});
-   if(!x.ok){m.textContent=tr('Wrong email or password.');return}
+   if(!x.ok){const t=await x.json().catch(()=>({})),w=t.msg||t.error_description||t.message||('Error '+x.status);m.textContent=t.error_code=='invalid_credentials'||/invalid login/i.test(w)?tr('Wrong email or password.'):w;return}
    const j=await x.json();SESS={access_token:j.access_token,refresh_token:j.refresh_token,expires_at:j.expires_at||Math.floor(Date.now()/1000)+j.expires_in,user:j.user};try{localStorage['ems-sess']=JSON.stringify(SESS)}catch(e){}
    d.remove();await setRole();await cloudLoad();r();if(!ISED)say('You are signed in, but this account is not on the editors list. You can view the data but not change it.')}
-  catch(e){m.textContent=tr('Could not reach the online database. Try again.')}}}
+  catch(e){m.textContent=tr('Could not reach the online database. Try again.')+' ('+(e&&e.message||e)+')'}}}
 function signOut(){const t=SESS&&SESS.access_token;SESS=null;ISED=false;ro=true;try{localStorage.removeItem('ems-sess')}catch(e){}if(t)fetch(CFG.url+'/auth/v1/logout',{method:'POST',headers:{apikey:CFG.key,Authorization:'Bearer '+t}}).catch(()=>{});sel=null;stage=null;r()}
 function setMode(m){if(!ro)LOCAL=S;ro=m=='pub'&&!!PUB;S=ro?PUB:LOCAL;sel=null;stage=null;pend=null;try{localStorage['ems-mode']=ro?'pub':'local'}catch(e){}}
 const shrink=(b,max,q)=>new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;fr.onload=()=>{const im=new Image();im.onerror=rej;im.onload=()=>{const k=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.width*k));c.height=Math.max(1,Math.round(im.height*k));const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);c.toBlob(o=>o?res(o):rej(),'image/jpeg',q)};im.src=fr.result};fr.readAsDataURL(b)});
@@ -370,12 +373,12 @@ const ch={
  rest:async e=>{try{const d=JSON.parse(await e.files[0].text());if(!Array.isArray(d.patterns))throw 0;if(await ask('Replace all current data with this backup?')){const fl=d._files||{};delete d._files;d.patterns.forEach(p=>(p.atts||[]).forEach(a=>delete a.th));
    for(const id in fl){const o=fl[id],u=atob(o.data.split(',')[1]),n=new Uint8Array(u.length);for(let i=0;i<u.length;i++)n[i]=u.charCodeAt(i);const bl=new Blob([n],{type:o.type});if(CLOUD){const a=d.patterns.flatMap(p=>p.atts||[]).find(x=>x.id==id);if(a)await attachBlob(a,bl,a.name)}else await fput(id,bl)}
    if(CLOUD)d.patterns.forEach(p=>p.atts=(p.atts||[]).filter(a=>a.path));
-   S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d);save();sel=null;r()}}catch(x){say('That file is not a valid EMS backup.')}}
+   S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d);save();sel=null;r()}}catch(x){say(x===0||x instanceof SyntaxError?'That file is not a valid EMS backup.':'The file could not be saved. Details: '+(x&&x.message||x))}}
 };
 document.addEventListener('click',e=>{const a=e.target.closest('[data-a]');if(a&&ro&&!OKA.has(a.dataset.a))return;if(a&&act[a.dataset.a])act[a.dataset.a](a.dataset,a)});
 document.addEventListener('change',e=>{const c=e.target.dataset&&e.target.dataset.c;if(c&&ro&&!['cf','cv','cvt','lang','mode'].includes(c))return;if(c&&ch[c])ch[c](e.target)});
 document.addEventListener('input',e=>{const l=e.target.dataset&&e.target.dataset.live;if(l){F[l]=e.target.value;r()}});
-(async()=>{if(CLOUD){try{await cloudInit()}catch(e){console.error(e);CLOUD=false;ro=false;S=LOCAL;say('Could not connect to the online database, so the data stored in this browser is shown instead.')}}
+(async()=>{if(CLOUD){try{await cloudInit()}catch(e){console.error(e);CLOUD=false;ro=false;S=LOCAL;say('Could not connect to the online database, so the data stored in this browser is shown instead. Details: '+(e&&e.message||e))}}
  if(!CLOUD){try{const x=await fetch('data.json',{cache:'no-cache'});if(x.ok){const d=await x.json();if(d&&Array.isArray(d.patterns)){delete d._files;PUB=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d)}}}catch(e){}
   let m='local';if(PUB){try{m=localStorage['ems-mode']||'pub'}catch(e){m='pub'}if(!OWN)m='pub'}setMode(m)}
  r();if(CLOUD){setInterval(poll,20000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()})}})();
