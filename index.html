@@ -6,7 +6,7 @@
 :root{--ink:#1f2a37;--mut:#5d6b7a;--bg:#f4f6f7;--card:#fff;--line:#d9e0e4;--ac:#1f5f5b;--tint:#e1efed;--bad:#b3261e}
 *{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg)}
 header{background:var(--ac);color:#fff;padding:10px 16px;position:sticky;top:0;z-index:5}
-header b{font-size:17px}.top{display:flex;justify-content:space-between;align-items:center;gap:8px}header select{background:#fff;color:var(--ink);padding:3px 6px}nav{display:flex;gap:4px;overflow-x:auto;margin-top:6px}
+header b{font-size:17px}#auth{background:#fff;color:var(--ac);font-weight:600;border-color:#fff}.top{display:flex;justify-content:space-between;align-items:center;gap:8px}header select{background:#fff;color:var(--ink);padding:3px 6px}nav{display:flex;gap:4px;overflow-x:auto;margin-top:6px}
 nav button{background:none;border:0;color:#cfe5e2;padding:6px 12px;border-radius:6px;white-space:nowrap}
 nav button.on{background:#fff;color:var(--ac);font-weight:600}
 main{max-width:1000px;margin:0 auto;padding:16px}
@@ -133,6 +133,9 @@ const thumb=b=>new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;
 /* language: Vietnamese labels are applied to the rendered page; stored values and your data stay unchanged */
 let lang='en';try{lang=localStorage['ems-lang']||'en'}catch(e){}
 const VI=new Map(Object.entries({
+'Register an account':'Đăng ký tài khoản','Register a new account':'Đăng ký tài khoản mới','I already have an account':'Tôi đã có tài khoản','Register':'Đăng ký','Confirm password':'Xác nhận mật khẩu','Passwords do not match.':'Mật khẩu nhập lại không khớp.',
+'After you register, the owner must give your account permission to edit. Until then you can only view.':'Sau khi đăng ký, chủ sở hữu cần cấp quyền sửa cho tài khoản của bạn. Cho đến lúc đó bạn chỉ có thể xem.',
+'This email is already registered. Sign in instead.':'Email này đã được đăng ký. Hãy đăng nhập.','Email not confirmed':'Email chưa được xác nhận. Hãy mở liên kết trong thư xác nhận.','User already registered':'Email này đã được đăng ký. Hãy đăng nhập.',
 'Online database':'Cơ sở dữ liệu trực tuyến','Upload the patterns, colors, prices and attachment photos stored in this browser to the shared online database. This replaces everything that is currently online.':'Tải mẫu thêu, màu, giá và ảnh đính kèm đang lưu trong trình duyệt này lên cơ sở dữ liệu trực tuyến dùng chung. Thao tác này sẽ thay thế toàn bộ dữ liệu đang có trực tuyến.',
 'Upload the data in this browser to the online database':'Tải dữ liệu trong trình duyệt này lên cơ sở dữ liệu trực tuyến','Replace ALL online data with the data stored in this browser?':'Thay TOÀN BỘ dữ liệu trực tuyến bằng dữ liệu lưu trong trình duyệt này?','No data found in this browser to upload.':'Không tìm thấy dữ liệu nào trong trình duyệt này để tải lên.',
 'Sign in to edit':'Đăng nhập để chỉnh sửa','Email':'Email','Password':'Mật khẩu','Sign in':'Đăng nhập','Wrong email or password.':'Sai email hoặc mật khẩu.','Could not reach the online database. Try again.':'Không kết nối được cơ sở dữ liệu trực tuyến. Hãy thử lại.',
@@ -188,6 +191,8 @@ const VI=new Map(Object.entries({
 'Color name':'Tên màu','HEX (optional, e.g. #1a2b3c)':'Mã HEX (không bắt buộc, ví dụ #1a2b3c)','Missing color code':'Thiếu mã màu','Unknown source or target brand':'Thương hiệu gốc hoặc đích không xác định'}));
 const TY=x=>x.replace(/match type not stated/g,'chưa nêu loại khớp').replace(/Exact/g,'Chính xác').replace(/Closest/g,'Gần nhất').replace(/Approximate/g,'Xấp xỉ');
 const RX=[
+[/^Account created for (.+)\. If you receive a confirmation email, open the link in it\. Then ask the owner to give this account permission to edit\.$/,a=>`Đã tạo tài khoản cho ${a}. Nếu bạn nhận được email xác nhận, hãy mở liên kết trong đó. Sau đó nhờ chủ sở hữu cấp quyền sửa cho tài khoản này.`],
+[/^Done: (\d+) patterns, (\d+) colors, (\d+) mappings, (\d+) prices\.(?: (\d+) attachments could not be uploaded and were left out\. Details: ([\s\S]*))?$/,(p,c,m,x,b,w)=>`Hoàn tất: ${p} mẫu thêu, ${c} màu, ${m} quy đổi, ${x} giá.`+(b?` ${b} tệp đính kèm không tải lên được và đã bị bỏ qua. Chi tiết: ${w}`:'')],
 [/^The file could not be saved\. Details: ([\s\S]*)$/,a=>`Không thể lưu tệp. Chi tiết: ${a}`],
 [/^Could not save to the online database\. Your last change was not saved\. Check your connection and that your account is on the editors list\. Details: ([\s\S]*)$/,a=>`Không lưu được vào cơ sở dữ liệu trực tuyến. Thay đổi gần nhất chưa được lưu. Hãy kiểm tra kết nối và xem tài khoản của bạn có trong danh sách người được sửa không. Chi tiết: ${a}`],
 [/^Could not connect to the online database, so the data stored in this browser is shown instead\. Details: ([\s\S]*)$/,a=>`Không kết nối được cơ sở dữ liệu trực tuyến nên đang hiển thị dữ liệu lưu trong trình duyệt này. Chi tiết: ${a}`],
@@ -219,7 +224,7 @@ function loc(root){if(lang!='vi')return;
  const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT),ns=[];while(w.nextNode())ns.push(w.currentNode);
  ns.forEach(n=>{if(/^(TEXTAREA|SCRIPT|STYLE)$/.test(n.parentNode.nodeName))return;const s=n.nodeValue,c=s.trim();if(!c)return;const t=tr(c);if(t!==c)n.nodeValue=s.replace(c,()=>t)});
  root.querySelectorAll('[placeholder],[aria-label]').forEach(e=>['placeholder','aria-label'].forEach(a=>{const v=e.getAttribute(a);if(v){const t=tr(v);if(t!==v)e.setAttribute(a,t)}}))}
-function applyHead(){$('#ttl').textContent=lang=='vi'?'Hệ thống quản lý thêu':'Embroidery Management System';document.title=$('#ttl').textContent;document.documentElement.lang=lang;$('#lang').value=lang;const mo=$('#mode');mo.style.display=!CLOUD&&PUB&&OWN?'':'none';mo.options[0].text=lang=='vi'?'Dữ liệu đã công bố (chỉ xem)':'Published data (read-only)';mo.options[1].text=lang=='vi'?'Dữ liệu của tôi (có thể sửa)':'My editable data';mo.value=ro?'pub':'local';const au=$('#auth'),v=lang=='vi';au.style.display=CLOUD?'':'none';au.textContent=SESS?(v?'Đăng xuất':'Sign out'):(v?'Đăng nhập':'Sign in');au.title=SESS&&SESS.user?SESS.user.email:'';$('#sync').textContent=CLOUD?(SYNC?(v?{saving:'Đang lưu…',saved:'Đã lưu trực tuyến'}:{saving:'Saving…',saved:'Saved online'})[SYNC]:(ro?(v?'Chỉ xem':'View only'):(v?'Có thể sửa':'Can edit'))):''}
+function applyHead(){$('#ttl').textContent=lang=='vi'?'Hệ thống quản lý thêu':'Embroidery Management System';document.title=$('#ttl').textContent;document.documentElement.lang=lang;$('#lang').value=lang;const mo=$('#mode');mo.style.display=!CLOUD&&PUB&&OWN?'':'none';mo.options[0].text=lang=='vi'?'Dữ liệu đã công bố (chỉ xem)':'Published data (read-only)';mo.options[1].text=lang=='vi'?'Dữ liệu của tôi (có thể sửa)':'My editable data';mo.value=ro?'pub':'local';const au=$('#auth'),v=lang=='vi';au.style.display=CLOUD?'':'none';au.textContent=SESS?(v?'Đăng xuất':'Sign out'):(v?'Đăng nhập / Đăng ký':'Sign in / Register');au.title=SESS&&SESS.user?SESS.user.email:'';$('#sync').textContent=CLOUD?((SESS&&SESS.user?SESS.user.email+' · ':'')+(SYNC?(v?{saving:'Đang lưu…',saved:'Đã lưu trực tuyến'}:{saving:'Saving…',saved:'Saved online'})[SYNC]:(ro?(v?'Chỉ xem':'View only'):(v?'Có thể sửa':'Can edit')))):''}
 function r(){const id=document.activeElement&&document.activeElement.id;
  $('#nav').innerHTML=T.map(([k,l])=>`<button data-a="tab" data-k="${k}" class="${tab==k?'on':''}">${l}</button>`).join('');
  $('#app').innerHTML=({patterns:()=>sel&&P()?patV():listV(),colors:colV,convert:cvV,prices:prV,data:dtV})[tab]();
@@ -235,6 +240,7 @@ function r(){const id=document.activeElement&&document.activeElement.id;
   else if(ro||CLOUD){const a=findAtt(id);if(a&&a.url)el.href=a.url}
   else{const b=await fget(id).catch(()=>null);if(b)el.href=URL.createObjectURL(b)}})}
 const sumRows=()=>{const o=[['Pattern ID','Pattern','Recipe','Thread cost (VND)','Labor cost (VND)','Total (VND)']];S.patterns.forEach(p=>p.recipes.forEach(x=>o.push([p.id,p.name,rn(x),Math.round(rcost(x)),Math.round(lab(p)),Math.round(rcost(x)+lab(p))])));return o};
+const done=(s,bad,why)=>`Done: ${s.patterns.length} patterns, ${s.colors.length} colors, ${s.maps.length} mappings, ${s.prices.length} prices.`+(bad?` ${bad} attachments could not be uploaded and were left out. Details: ${why}`:'');
 const act={
  tab:d=>{tab=d.k;r();scrollTo(0,0)},back:()=>{sel=null;stage=null;r()},pview:d=>{F.pv=d.k;r()},print:()=>print(),
  newp:async()=>{await nextN();const p={id:'P-'+String(S.n).padStart(4,'0'),name:'',desc:'',w:'',h:'',created:today(),updated:today(),labor:{},recipes:[],atts:[]};S.patterns.unshift(p);sel=p.id;save();r()},
@@ -280,11 +286,11 @@ const act={
   S.maps.push({id:uid(),sb:a.brand,sc:a.cat,scode:a.code,tb:b.brand,tc:b.cat,tcode:b.code,type:v(7),rank:v(8),notes:v(9),src:'Manual'});save();r()},
  addprice:()=>{const p=+$('#pp').value;if(!(p>0))return say('Enter a price above 0.');S.prices.push({id:uid(),brand:$('#pb').value,type:$('#pt').value,price:p,date:$('#pd').value||today(),upd:today()});save();r()},
  wipe:async()=>{if(!await ask('Delete ALL patterns, colors, mappings, prices and attachments in this browser? This cannot be undone.'))return;(await idb).close();localStorage.removeItem(K);indexedDB.deleteDatabase('ems-files').onsuccess=()=>location.reload()},
- auth:()=>SESS?signOut():signIn(),
+ auth:()=>SESS?signOut():signIn(false),
  uplocal:async()=>{const L=LOCAL;if(!L||!(L.patterns.length||L.colors.length||L.maps.length||L.prices.length))return say('No data found in this browser to upload.');if(!await ask('Replace ALL online data with the data stored in this browser?'))return;
-  const d=JSON.parse(JSON.stringify(L,(k,v)=>k=='th'||k=='url'||k=='turl'?undefined:v));
-  try{for(const p of d.patterns){for(const a of p.atts||[]){const b=await idbGet(a.id).catch(()=>null);if(b)await attachBlob(a,b,a.name)}p.atts=(p.atts||[]).filter(a=>a.path)}}catch(x){return say('The file could not be saved. Details: '+(x&&x.message||x))}
-  S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d);save();r()},
+  const d=JSON.parse(JSON.stringify(L,(k,v)=>k=='th'||k=='url'||k=='turl'?undefined:v));let bad=0,why='';
+  for(const p of d.patterns){for(const a of p.atts||[]){try{const b=await idbGet(a.id);if(!b)throw new Error('file not found in this browser');await attachBlob(a,b,a.name)}catch(x){bad++;why=why||(x&&x.message||String(x))}}p.atts=(p.atts||[]).filter(a=>a.path)}
+  S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d);tab='patterns';sel=null;save();r();say(done(S,bad,why))},
  pubzip:async()=>{
   try{if(!window.JSZip)await new Promise((ok,no)=>{const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';sc.onload=ok;sc.onerror=no;document.head.appendChild(sc)})}catch(x){return say('Could not load the ZIP library. Check your internet connection and try again.')}
   const z=new JSZip(),d=JSON.parse(JSON.stringify(S,(k,v)=>k=='th'?undefined:v));let bad=0;
@@ -336,12 +342,18 @@ async function delFile(path){if(path)try{await api('/storage/v1/object/attachmen
 async function attachBlob(a,blob,fname){a.path=a.id+(ext(fname)||'.bin');await upFile(a.path,blob,a.type);delete a.tpath;delete a.turl;
  if(/^image/.test(a.type)){try{await upFile(a.id+'.th.jpg',await shrink(blob,240,.75),'image/jpeg');a.tpath=a.id+'.th.jpg'}catch(x){}}
  a.url=pubUrl(a.path);if(a.tpath)a.turl=pubUrl(a.tpath)}
-function signIn(){const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center;z-index:99;padding:16px';
- d.innerHTML='<form class="card" style="max-width:380px;width:100%;margin:0"><h3>Sign in to edit</h3><label>Email<input id="lgE" type="email" required autocomplete="username"></label><label style="margin-top:8px">Password<input id="lgP" type="password" required autocomplete="current-password"></label><p id="lgM" class="bad"></p><div class="row" style="justify-content:flex-end;margin:0"><button type="button" id="lgC">Cancel</button><button class="p" type="submit">Sign in</button></div></form>';
- document.body.appendChild(d);loc(d);d.querySelector('#lgC').onclick=()=>d.remove();d.querySelector('#lgE').focus();
- d.querySelector('form').onsubmit=async ev=>{ev.preventDefault();const m=d.querySelector('#lgM');m.textContent='';
-  try{const x=await fetch(CFG.url+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:CFG.key,'Content-Type':'application/json'},body:JSON.stringify({email:d.querySelector('#lgE').value.trim(),password:d.querySelector('#lgP').value})});
-   if(!x.ok){const t=await x.json().catch(()=>({})),w=t.msg||t.error_description||t.message||('Error '+x.status);m.textContent=t.error_code=='invalid_credentials'||/invalid login/i.test(w)?tr('Wrong email or password.'):w;return}
+function signIn(reg){const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center;z-index:99;padding:16px';
+ d.innerHTML=`<form class="card" style="max-width:380px;width:100%;margin:0"><h3>${reg?'Register an account':'Sign in to edit'}</h3><label>Email<input id="lgE" type="email" required autocomplete="username"></label><label style="margin-top:8px">Password<input id="lgP" type="password" required minlength="6" autocomplete="${reg?'new-password':'current-password'}"></label>${reg?'<label style="margin-top:8px">Confirm password<input id="lgQ" type="password" required autocomplete="new-password"></label><p class="m">After you register, the owner must give your account permission to edit. Until then you can only view.</p>':''}<p id="lgM" class="bad"></p><div class="row" style="justify-content:space-between;margin:0"><button type="button" id="lgS">${reg?'I already have an account':'Register a new account'}</button><span class="row" style="margin:0"><button type="button" id="lgC">Cancel</button><button class="p" type="submit">${reg?'Register':'Sign in'}</button></span></div></form>`;
+ document.body.appendChild(d);loc(d);d.querySelector('#lgC').onclick=()=>d.remove();d.querySelector('#lgS').onclick=()=>{d.remove();signIn(!reg)};d.querySelector('#lgE').focus();
+ d.querySelector('form').onsubmit=async ev=>{ev.preventDefault();const m=d.querySelector('#lgM'),em=d.querySelector('#lgE').value.trim(),pw=d.querySelector('#lgP').value;m.textContent='';
+  try{
+   if(reg){if(pw!==d.querySelector('#lgQ').value){m.textContent=tr('Passwords do not match.');return}
+    const x=await fetch(CFG.url+'/auth/v1/signup',{method:'POST',headers:{apikey:CFG.key,'Content-Type':'application/json'},body:JSON.stringify({email:em,password:pw})}),t=await x.json().catch(()=>({}));
+    if(!x.ok){m.textContent=tr(t.msg||t.error_description||t.message||('Error '+x.status));return}
+    if(t.identities&&t.identities.length==0){m.textContent=tr('This email is already registered. Sign in instead.');return}
+    d.remove();say('Account created for '+em+'. If you receive a confirmation email, open the link in it. Then ask the owner to give this account permission to edit.');return}
+   const x=await fetch(CFG.url+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:CFG.key,'Content-Type':'application/json'},body:JSON.stringify({email:em,password:pw})});
+   if(!x.ok){const t=await x.json().catch(()=>({})),w=t.msg||t.error_description||t.message||('Error '+x.status);m.textContent=t.error_code=='invalid_credentials'||/invalid login/i.test(w)?tr('Wrong email or password.'):tr(w);return}
    const j=await x.json();SESS={access_token:j.access_token,refresh_token:j.refresh_token,expires_at:j.expires_at||Math.floor(Date.now()/1000)+j.expires_in,user:j.user};try{localStorage['ems-sess']=JSON.stringify(SESS)}catch(e){}
    d.remove();await setRole();await cloudLoad();r();if(!ISED)say('You are signed in, but this account is not on the editors list. You can view the data but not change it.')}
   catch(e){m.textContent=tr('Could not reach the online database. Try again.')+' ('+(e&&e.message||e)+')'}}}
@@ -370,10 +382,13 @@ const ch={
  imp:async e=>{const f=e.files[0];if(!f)return;pend={k:e.dataset.k,...check(e.dataset.k,recs(await f.text()))};r()},
  cv:e=>{CV[e.dataset.k]=e.value;if(e.dataset.k=='sb')CV.tb=CV.tb.filter(b=>b!=e.value);CV.go=0;r()},
  cvt:e=>{CV.tb=e.checked?[...CV.tb,e.value]:CV.tb.filter(b=>b!=e.value);CV.go=0},
- rest:async e=>{try{const d=JSON.parse(await e.files[0].text());if(!Array.isArray(d.patterns))throw 0;if(await ask('Replace all current data with this backup?')){const fl=d._files||{};delete d._files;d.patterns.forEach(p=>(p.atts||[]).forEach(a=>delete a.th));
-   for(const id in fl){const o=fl[id],u=atob(o.data.split(',')[1]),n=new Uint8Array(u.length);for(let i=0;i<u.length;i++)n[i]=u.charCodeAt(i);const bl=new Blob([n],{type:o.type});if(CLOUD){const a=d.patterns.flatMap(p=>p.atts||[]).find(x=>x.id==id);if(a)await attachBlob(a,bl,a.name)}else await fput(id,bl)}
-   if(CLOUD)d.patterns.forEach(p=>p.atts=(p.atts||[]).filter(a=>a.path));
-   S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d);save();sel=null;r()}}catch(x){say(x===0||x instanceof SyntaxError?'That file is not a valid EMS backup.':'The file could not be saved. Details: '+(x&&x.message||x))}}
+ rest:async e=>{let d;try{d=JSON.parse(await e.files[0].text());if(!Array.isArray(d.patterns))throw 0}catch(x){e.value='';return say('That file is not a valid EMS backup.')}
+  e.value='';if(!await ask('Replace all current data with this backup?'))return;
+  const fl=d._files||{};delete d._files;d.patterns.forEach(p=>(p.atts=p.atts||[]).forEach(a=>delete a.th));let bad=0,why='';
+  for(const a of d.patterns.flatMap(p=>p.atts)){const o=fl[a.id];try{if(!o){if(CLOUD&&!a.path)throw new Error('the backup has no file for '+a.name);continue}
+   const u=atob(o.data.split(',')[1]),n=new Uint8Array(u.length);for(let i=0;i<u.length;i++)n[i]=u.charCodeAt(i);const bl=new Blob([n],{type:o.type});if(CLOUD)await attachBlob(a,bl,a.name);else await fput(a.id,bl)}catch(x){bad++;why=why||(x&&x.message||String(x))}}
+  if(CLOUD)d.patterns.forEach(p=>p.atts=p.atts.filter(a=>a.path));
+  S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d);tab='patterns';sel=null;save();r();say(done(S,bad,why))}
 };
 document.addEventListener('click',e=>{const a=e.target.closest('[data-a]');if(a&&ro&&!OKA.has(a.dataset.a))return;if(a&&act[a.dataset.a])act[a.dataset.a](a.dataset,a)});
 document.addEventListener('change',e=>{const c=e.target.dataset&&e.target.dataset.c;if(c&&ro&&!['cf','cv','cvt','lang','mode'].includes(c))return;if(c&&ch[c])ch[c](e.target)});
