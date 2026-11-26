@@ -50,7 +50,7 @@ let S={};try{S=JSON.parse(localStorage[K])}catch(e){}
 S=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},S);S.patterns.forEach(p=>p.atts.forEach(a=>delete a.th));
 let LOCAL=S,PUB=null,ro=false,CLOUD=true;/* PUB = published data.json (read-only for visitors); LOCAL = this browser's editable copy */
 const OWN=(()=>{try{if(location.hash=='#edit')localStorage['ems-owner']='1';return localStorage['ems-owner']=='1'}catch(e){return location.hash=='#edit'}})();
-const OKA=new Set(['tab','back','openp','pview','print','find','expcost','expall','expcolors','expmaps','auth']);
+const OKA=new Set(['cpage','tab','back','openp','pview','print','find','expcost','expall','expcolors','expmaps','auth']);
 const save=()=>{if(ro)return;if(CLOUD){sched();return}try{localStorage[K]=JSON.stringify(S,(k,v)=>k=='th'?undefined:v)}catch(e){say('Browser storage is full. Export a backup, then remove unused data.')}};
 let tab='patterns',sel=null,pend=null,stage=null,F={},CV={sb:'DMC',cat:CATS[0],code:'',tb:[],go:0};
 /* attachment files live in IndexedDB so originals are preserved */
@@ -115,8 +115,10 @@ function patV(){const p=P(),L=p.labor||{},f=(k,ph,t,x)=>`<label style="${x||''}"
 const impV=k=>`<div class="card edit"><h3>Import ${k=='colors'?'color catalog':'conversion mappings'} (CSV)</h3><div class="row"><input type="file" accept=".csv,text/csv" data-c="imp" data-k="${k}"><button data-a="tpl" data-k="${k}">Download template</button></div>${pend&&pend.k==k?`<p><b>${pend.ok.length}</b> valid rows, <b class="${pend.err.length?'bad':''}">${pend.err.length}</b> with errors. Nothing is saved until you confirm.</p>${pend.err.slice(0,8).map(e=>`<div class="m bad">Row ${e[0]}: ${esc(e[1])}</div>`).join('')}<div class="row">${pend.err.length?'<button data-a="errrep">Download error report</button>':''}<button class="p" data-a="commit"${pend.ok.length?'':' disabled'}>Import ${pend.ok.length} valid rows</button><button data-a="cancel">Cancel</button></div>`:''}</div>`;
 function colV(){const b=F.cb||'',c=F.cc||'',s=F.cs||'',q=(F.cq||'').toLowerCase();
  const L=S.colors.filter(x=>(!b||x.brand==b)&&(!c||x.cat==c)&&(!s||x.status==s)&&(x.code+' '+x.name).toLowerCase().includes(q));
- return impV('colors')+`<div class="card"><h2>Color library (${L.length})</h2><div class="row"><select data-c="cf" data-k="cb"><option value="">All brands</option>${opts(BR,b)}</select><select data-c="cf" data-k="cc"><option value="">All categories</option>${opts(CATS,c)}</select><select data-c="cf" data-k="cs"><option value="">Any status</option>${opts(['Active','Discontinued'],s)}</select><input id="cq" data-live="cq" placeholder="Search code or name" value="${esc(F.cq||'')}"></div>
- <div class="tw"><table><tr><th></th><th>Brand</th><th>Category</th><th>Code</th><th>Name</th><th>Status</th><th></th></tr>${L.slice(0,150).map(x=>`<tr><td>${swatch(x)}</td><td>${esc(x.brand)}</td><td>${esc(x.cat)}</td><td><b>${esc(x.code)}</b></td><td>${esc(x.name)}</td><td>${x.status}</td><td><button data-a="editcolor" data-id="${x.id}">Edit</button> <button data-a="togcolor" data-id="${x.id}">${x.status=='Active'?'Discontinue':'Reactivate'}</button> <button class="x" data-a="delcolor" data-id="${x.id}">Delete</button></td></tr>`).join('')}</table></div>${L.length>150?'<p class="m">Showing the first 150. Narrow the filters to see more.</p>':''}${S.colors.length?'':'<p class="m">The library is empty. Import a catalog CSV above or add a color below.</p>'}</div>
+ const n=+F.cn||100,pages=Math.max(1,Math.ceil(L.length/n)),pg=Math.min(+F.cp||0,pages-1),from=pg*n;F.cp=pg;
+ const pager=pages>1?`<div class="row noprint"><button data-a="cpage" data-k="-1"${pg?'':' disabled'}>‹ Previous</button><label style="flex-direction:row;align-items:center;gap:6px">Page<select data-c="cf" data-k="cp">${Array.from({length:pages},(_,i)=>`<option value="${i}"${i==pg?' selected':''}>${i+1}</option>`).join('')}</select>of ${pages}</label><button data-a="cpage" data-k="1"${pg<pages-1?'':' disabled'}>Next ›</button><span class="m">Showing ${from+1}–${Math.min(L.length,from+n)} of ${L.length}</span></div>`:'';
+ return impV('colors')+`<div class="card" id="colt"><h2>Color library (${L.length})</h2><div class="row"><select data-c="cf" data-k="cb"><option value="">All brands</option>${opts(BR,b)}</select><select data-c="cf" data-k="cc"><option value="">All categories</option>${opts(CATS,c)}</select><select data-c="cf" data-k="cs"><option value="">Any status</option>${opts(['Active','Discontinued'],s)}</select><input id="cq" data-live="cq" placeholder="Search code or name" value="${esc(F.cq||'')}"><select data-c="cf" data-k="cn" aria-label="Rows per page">${[50,100,200,500].map(v=>`<option value="${v}"${v==n?' selected':''}>${v} rows</option>`).join('')}</select></div>${pager}
+ <div class="tw"><table><tr><th></th><th>Brand</th><th>Category</th><th>Code</th><th>Name</th><th>Status</th><th></th></tr>${L.slice(from,from+n).map(x=>`<tr><td>${swatch(x)}</td><td>${esc(x.brand)}</td><td>${esc(x.cat)}</td><td><b>${esc(x.code)}</b></td><td>${esc(x.name)}</td><td>${x.status}</td><td><button data-a="editcolor" data-id="${x.id}">Edit</button> <button data-a="togcolor" data-id="${x.id}">${x.status=='Active'?'Discontinue':'Reactivate'}</button> <button class="x" data-a="delcolor" data-id="${x.id}">Delete</button></td></tr>`).join('')}</table></div>${pager}${S.colors.length?'':'<p class="m">The library is empty. Import a catalog CSV above or add a color below.</p>'}</div>
  <div class="card edit"><h3>Add a color</h3><div class="row"><select id="ab">${opts(BR)}</select><select id="ac">${opts(CATS)}</select><input id="acode" placeholder="Code"><input id="an" placeholder="Name"><input id="ah" placeholder="HEX (optional)" size="9"><button class="p" data-a="addcolor">Add color</button></div><div class="row"><button data-a="airo">Copy all DMC colors to Airo</button><button data-a="expcolors">Export catalog CSV</button></div></div>`}
 function cvV(){const o=S.colors.filter(c=>c.brand==CV.sb&&c.cat==CV.cat).map(c=>`<option value="${esc(c.code)}">${esc(c.name)}</option>`).join('');let res='';
  if(CV.go)res=CV.tb.length?CV.tb.map(tb=>{const m=conv(CV.sb,CV.cat,CV.code,tb);return `<h3>${esc(tb)}</h3>`+(m.length?`<div class="tw"><table><tr><th>Target</th><th>Category</th><th>Match</th><th>Rank</th><th>Source</th><th></th></tr>${m.map(x=>{const t=fc(x.tb,x.tc,x.tcode);return `<tr><td>${swatch(t)}<b>${esc(x.tb)} ${esc(x.tcode)}</b> ${esc(t?t.name:'')}</td><td>${esc(x.tc)}</td><td>${esc(x.type||'Not stated')}</td><td>${esc(x.rank||'–')}</td><td>${esc(x.src||'–')}</td><td>${x.syn?'':`<button class="x" data-a="delmap" data-id="${x.id}">Delete</button>`}</td></tr>`}).join('')}</table></div>`:`<p>No predefined mapping from ${esc(CV.sb)} ${esc(CV.code)} to ${esc(tb)} is in your database. Pick another target brand or a different source color.</p>`)}).join(''):'<p class="m">Select at least one target brand.</p>';
@@ -133,6 +135,7 @@ const thumb=b=>new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;
 /* language: Vietnamese labels are applied to the rendered page; stored values and your data stay unchanged */
 let lang='en';try{lang=localStorage['ems-lang']||'en'}catch(e){}
 const VI=new Map(Object.entries({
+'‹ Previous':'‹ Trước','Next ›':'Sau ›','Page':'Trang',
 '+ Add color':'+ Thêm màu','Thread cost':'Chi phí chỉ',
 'Register an account':'Đăng ký tài khoản','Register a new account':'Đăng ký tài khoản mới','I already have an account':'Tôi đã có tài khoản','Register':'Đăng ký','Confirm password':'Xác nhận mật khẩu','Passwords do not match.':'Mật khẩu nhập lại không khớp.',
 'After you register, the owner must give your account permission to edit. Until then you can only view.':'Sau khi đăng ký, chủ sở hữu cần cấp quyền sửa cho tài khoản của bạn. Cho đến lúc đó bạn chỉ có thể xem.',
@@ -192,6 +195,10 @@ const VI=new Map(Object.entries({
 'Color name':'Tên màu','HEX (optional, e.g. #1a2b3c)':'Mã HEX (không bắt buộc, ví dụ #1a2b3c)','Missing color code':'Thiếu mã màu','Unknown source or target brand':'Thương hiệu gốc hoặc đích không xác định'}));
 const TY=x=>x.replace(/match type not stated/g,'chưa nêu loại khớp').replace(/Exact/g,'Chính xác').replace(/Closest/g,'Gần nhất').replace(/Approximate/g,'Xấp xỉ');
 const RX=[
+[/^Showing (\d+)–(\d+) of (\d+)$/,(a,b,c)=>`Hiển thị ${a}–${b} trong tổng số ${c}`],
+[/^of (\d+)$/,n=>`/ ${n}`],
+[/^(\d+) rows$/,n=>`${n} dòng`],
+[/^Rows per page$/,()=>'Số dòng mỗi trang'],
 [/^Account created for (.+)\. If you receive a confirmation email, open the link in it\. Then ask the owner to give this account permission to edit\.$/,a=>`Đã tạo tài khoản cho ${a}. Nếu bạn nhận được email xác nhận, hãy mở liên kết trong đó. Sau đó nhờ chủ sở hữu cấp quyền sửa cho tài khoản này.`],
 [/^Done: (\d+) patterns, (\d+) colors, (\d+) mappings, (\d+) prices\.(?: (\d+) attachments could not be uploaded and were left out\. Details: ([\s\S]*))?$/,(p,c,m,x,b,w)=>`Hoàn tất: ${p} mẫu thêu, ${c} màu, ${m} quy đổi, ${x} giá.`+(b?` ${b} tệp đính kèm không tải lên được và đã bị bỏ qua. Chi tiết: ${w}`:'')],
 [/^The file could not be saved\. Details: ([\s\S]*)$/,a=>`Không thể lưu tệp. Chi tiết: ${a}`],
@@ -262,6 +269,7 @@ const act={
  addrec:()=>{P().recipes.push({id:uid(),name:'',notes:'',lines:[{brand:'DMC',cat:CATS[0],code:'',qty:''}]});save();r()},
  delrec:async d=>{if(await ask('Delete this recipe?')){const p=P();p.recipes=p.recipes.filter(x=>x.id!=d.r);save();r()}},
  confirm:d=>{delete R(P(),d.r).draft;save();r()},
+ cpage:d=>{F.cp=Math.max(0,(+F.cp||0)+(+d.k));r();const t=document.getElementById('colt');if(t)t.scrollIntoView({block:'start'})},
  addln:d=>{const x=R(P(),d.r),l=x.lines[x.lines.length-1]||{};x.lines.push({brand:l.brand||'DMC',cat:l.cat||CATS[0],code:'',qty:''});save();r();const e=document.querySelector(`[data-c=ln][data-r="${d.r}"][data-i="${x.lines.length-1}"][data-k=code]`);if(e)e.focus()},
  delln:d=>{R(P(),d.r).lines.splice(+d.i,1);save();r()},
  prim:d=>{const p=P();p.atts.forEach(a=>a.primary=a.id==d.id);save();r()},
@@ -364,7 +372,7 @@ const shrink=(b,max,q)=>new Promise((res,rej)=>{const fr=new FileReader();fr.one
 const ch={
  mode:e=>{setMode(e.value);r()},
  lang:e=>{lang=e.value;try{localStorage['ems-lang']=lang}catch(x){}r()},
- ps:e=>{F.ps=e.value;r()},cf:e=>{F[e.dataset.k]=e.value;r()},rate:e=>{S.rate=+e.value||0;save()},
+ ps:e=>{F.ps=e.value;r()},cf:e=>{F[e.dataset.k]=e.value;if(e.dataset.k!='cp')F.cp=0;r()},rate:e=>{S.rate=+e.value||0;save()},
  pf:e=>{const p=P();p[e.dataset.k]=e.value;p.updated=today();save();},
  lab:e=>{const p=P();p.labor=p.labor||{};p.labor[e.dataset.k]=e.value===''?'':+e.value;save();r()},
  rname:e=>{R(P(),e.dataset.r).name=e.value;save()},
@@ -393,7 +401,7 @@ const ch={
 };
 document.addEventListener('click',e=>{const a=e.target.closest('[data-a]');if(a&&ro&&!OKA.has(a.dataset.a))return;if(a&&act[a.dataset.a])act[a.dataset.a](a.dataset,a)});
 document.addEventListener('change',e=>{const c=e.target.dataset&&e.target.dataset.c;if(c&&ro&&!['cf','cv','cvt','lang','mode'].includes(c))return;if(c&&ch[c])ch[c](e.target)});
-document.addEventListener('input',e=>{const l=e.target.dataset&&e.target.dataset.live;if(l){F[l]=e.target.value;r()}});
+document.addEventListener('input',e=>{const l=e.target.dataset&&e.target.dataset.live;if(l){F[l]=e.target.value;if(l=='cq')F.cp=0;r()}});
 (async()=>{if(CLOUD){try{await cloudInit()}catch(e){console.error(e);CLOUD=false;ro=false;S=LOCAL;say('Could not connect to the online database, so the data stored in this browser is shown instead. Details: '+(e&&e.message||e))}}
  if(!CLOUD){try{const x=await fetch('data.json',{cache:'no-cache'});if(x.ok){const d=await x.json();if(d&&Array.isArray(d.patterns)){delete d._files;PUB=Object.assign({n:0,rate:0,colors:[],maps:[],prices:[],patterns:[]},d)}}}catch(e){}
   let m='local';if(PUB){try{m=localStorage['ems-mode']||'pub'}catch(e){m='pub'}if(!OWN)m='pub'}setMode(m)}
